@@ -33,7 +33,7 @@ def _get(url, params):
 
 
 def geocode(place):
-    """'21250', 'Baltimore, MD' or 'Baltimore' -> (lat, lon, 'Baltimore, Maryland')."""
+    """'10001', 'Springfield, IL' or 'Springfield' -> (lat, lon, 'Springfield, Illinois')."""
     place = place.strip()
     name, _, region = (p.strip() for p in place.partition(","))
     params = {"name": name, "count": 10, "language": "en", "format": "json"}

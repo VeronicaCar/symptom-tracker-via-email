@@ -162,7 +162,7 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(servings("coffee"), 1)
 
     def test_pollen_summary(self):
-        text = ("Good morning!\nToday's pollen forecast for Baltimore\nTree pollen: High\n"
+        text = ("Good morning!\nToday's pollen forecast for your area\nTree pollen: High\n"
                 "Grass: Low\nWeed: Moderate\nUnsubscribe here")
         self.assertEqual(weather.pollen_summary("Pollen alert", text),
                          "Tree pollen: High; Grass: Low; Weed: Moderate")
