@@ -64,6 +64,14 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(p("2 monsters"), [("caffeine", "2 monsters (300 mg)")])
         self.assertEqual(p("caffeine 1 1/2 monsters"), [("caffeine", "1 1/2 monsters (225 mg)")])
         self.assertEqual(p("caffeine half a monster"), [("caffeine", "half a monster (75 mg)")])
+        for subject, value in [("3/4monster", "3/4 monster (113 mg)"), ("3 / 4 monster", "3/4 monster (113 mg)"),
+                               ("3/4 monsters", "3/4 monster (113 mg)"), ("monster3/4", "3/4 monster (113 mg)"),
+                               ("2monsters", "2 monsters (300 mg)"), ("2 monster", "2 monsters (300 mg)"),
+                               ("Monsters 2", "2 monsters (300 mg)"), ("monster x2", "2 monsters (300 mg)"),
+                               ("1 1/2monster", "1 1/2 monsters (225 mg)"), ("monsters", "monster (150 mg)")]:
+            self.assertEqual(p(subject), [("caffeine", value)], subject)
+        self.assertEqual(p("LOG", "Caffeine: 3/4monster\n"), [("caffeine", "3/4 monster (113 mg)")])
+        self.assertEqual(times("3/4monster@8am"), [NOW.replace(hour=8)])
         self.assertEqual(p("COFFEE"), [("caffeine", "coffee")])
         self.assertEqual(p("caffeine 120 mg pre-workout"), [("caffeine", "120 mg pre-workout")])
         self.assertEqual(parser.normalize("caffeine", "3/4 monster (113 mg)"), "3/4 monster (113 mg)")

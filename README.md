@@ -117,8 +117,9 @@ The space before `@` is optional (`8/10@ 12 pm` works).
 Water in oz, cups, ml or liters is added up for the daily total.
 
 Monsters are converted to mg of caffeine at 150 mg a can (Monster Ultra
-Sunrise): `3/4 monster`, `1 1/2 monsters`, `half a monster` and plain `monster`
-all work, in a subject or on a `Caffeine:` line. Add other drinks in Settings →
+Sunrise): `3/4 monster`, `1 1/2 monsters`, `half a monster`, `monster 3/4`, `monster x2`
+and plain `monster` work, singular or plural, with or without spaces (`3/4monster`),
+in a subject or on a `Caffeine:` line. Add other drinks in Settings →
 Tracking (e.g. `red bull = 80`). Daily caffeine is shown in mg when known.
 
 ## Reminders

@@ -160,37 +160,74 @@ def _normalize_vital(category, value):
 # mg of caffeine per drink; set from Settings. Monster Ultra Sunrise: 150 mg a can.
 CAFFEINE_MG = {"monster": 150}
 _QTY_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "half": 0.5, "quarter": 0.25}
-_QTY = r"(?:(\d+)\s+(?=\d+/))?(\d+/\d+|\d+(?:\.\d+)?|half|quarter|a|an|one|two|three)?"
+# Spaces are optional everywhere: "3/4 monster", "3 / 4 monster", "3/4monster".
+_NUM = r"\d+\s*/\s*\d+|\d+(?:\.\d+)?"
+_QTY = rf"(?:(\d+)\s+(?=\d+\s*/\s*\d))?({_NUM}|half|quarter|a|an|one|two|three)?"
 
 
 def _quantity(whole, part):
     qty = float(whole or 0)
     if not part:
         return qty or 1.0
+    part = part.replace(" ", "")
     if "/" in part:
         n, d = part.split("/")
         return qty + (int(n) / int(d) if int(d) else 0)
     return qty + (_QTY_WORDS[part.lower()] if part.lower() in _QTY_WORDS else float(part))
 
 
+def _drink_patterns(drink):
+    name = r"\s*".join(re.escape(w) for w in drink.split()) + r"s?"
+    before = rf"(?<![\w/]){_QTY}\s*(?:of\s*)?(?:an?\s+)?(?P<drink>{name})(?![a-z])"
+    # "monster 3/4", "monsters2" -- a number right after the drink (not "16oz")
+    after = rf"(?<![\w/])(?P<drink>{name})\s*(?:x\s*)?(?:(\d+)\s+(?=\d+\s*/\s*\d))?({_NUM})(?!\s*(?:\d|oz|ml|mg|g\b|/))"
+    return before, after
+
+
+def _drink_matches(value, drinks):
+    """Yield (quantity, drink, match) for every drink mention, drink-first forms first."""
+    taken = []
+    for drink in drinks:
+        before, after = _drink_patterns(drink)
+        for m in re.finditer(after, value, re.I):
+            taken.append(m.span())
+            yield _quantity(m.group(2), m.group(3)), drink, m
+        for m in re.finditer(before, value, re.I):
+            if not any(s <= m.start("drink") < e for s, e in taken):
+                yield _quantity(m.group(1), m.group(2)), drink, m
+
+
 def caffeine_mg(value, drinks=None):
-    """mg of caffeine in text like '3/4 monster', '1 1/2 monsters', 'half a monster'.
-    None when no known drink is named. An explicit '120 mg' wins."""
+    """mg of caffeine in text like '3/4 monster', '1 1/2 monsters', 'half a monster',
+    'monster 3/4'. None when no known drink is named. An explicit '120 mg' wins."""
     m = re.search(r"(\d+(?:\.\d+)?)\s*mg\b", value, re.I)
     if m:
         return float(m.group(1))
+    drinks = drinks or CAFFEINE_MG
     total, found = 0.0, False
-    for drink, mg in (drinks or CAFFEINE_MG).items():
-        pattern = _QTY + r"\s*(?:of\s+)?(?:an?\s+)?" + re.escape(drink) + r"s?\b"
-        for q in re.finditer(r"(?<![\w/])" + pattern, value, re.I):
-            total += _quantity(q.group(1), q.group(2)) * mg
-            found = True
+    for qty, drink, _ in _drink_matches(value, drinks):
+        total += qty * drinks[drink]
+        found = True
     return total if found else None
+
+
+def drink_only(text):
+    """'3/4monster', 'MONSTERS 2', 'half a monster' -> tidy '3/4 monster'; else None."""
+    text = text.strip().rstrip(".")
+    for qty, drink, m in _drink_matches(text, CAFFEINE_MG):
+        if m.span() == (0, len(text)):
+            amount = m.group(0)[:m.start("drink") - m.start()].strip() if m.start("drink") > m.start() \
+                else text[m.end("drink") - m.start():].strip().lstrip("xX").strip()
+            amount = re.sub(r"\s*/\s*", "/", amount)
+            plural = "s" if qty > 1 else ""
+            return f"{amount} {drink}{plural}".strip() if amount else f"{drink}{plural}"
+    return None
 
 
 def _normalize_caffeine(value):
     if re.search(r"\dmg\b|\bmg\b", value, re.I):
         return value
+    value = drink_only(value) or value  # "3/4monster" -> "3/4 monster"
     mg = caffeine_mg(value)
     return f"{value} ({int(mg + 0.5)} mg)" if mg else value
 
@@ -359,12 +396,10 @@ def _command(subject):
 def _one_off_category(subject):
     """Match 1-3 leading words of the subject to a category."""
     words = subject.split()
-    # "2 monsters", "1 1/2 monsters", "half a monster" -> caffeine
-    for i, w in enumerate(words[:3]):
-        if w.lower().rstrip("s") in CAFFEINE_MG and i > 0:
-            if all(re.fullmatch(r"\d+(?:/\d+|\.\d+)?|half|quarter|a|an|of", x, re.I) for x in words[:i]):
-                return "caffeine", "caffeine", subject
-            break
+    # "2 monsters", "3/4monster", "MONSTER 1/2" -> caffeine
+    drink = drink_only(subject)
+    if drink:
+        return "caffeine", "caffeine", drink
     for n in (3, 2, 1):
         if len(words) >= n:
             head = " ".join(words[:n])
