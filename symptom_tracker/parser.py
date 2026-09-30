@@ -22,11 +22,13 @@ import re
 from typing import NamedTuple, Optional
 
 CATEGORIES = ("symptoms", "sinus", "water", "electrolytes", "caffeine", "food",
-              "rescue_meds", "misc")
+              "rescue_meds", "nap", "left_early", "misc")
 LABELS = {"symptoms": "Symptoms", "sinus": "Sinus pain", "water": "Water",
           "electrolytes": "Electrolytes", "caffeine": "Caffeine", "food": "Food",
-          "rescue_meds": "Rescue meds", "misc": "Misc"}
+          "rescue_meds": "Rescue meds", "nap": "Nap", "left_early": "Left early",
+          "misc": "Misc"}
 SEVERITY_CATEGORIES = {"symptoms", "sinus"}
+NO_VALUE_NEEDED = {"nap", "left_early", "rescue_meds"}  # "LEFT EARLY" alone is enough
 
 # Generic names just pick the category; every other alias is kept in the
 # logged value ("MIGRAINE 6/10" logs "migraine 6/10" under Symptoms).
@@ -39,6 +41,9 @@ _GENERIC = {
     "food": ("food", "ate", "eat", "meal"),
     "rescue_meds": ("rescue", "rescue med", "rescue meds", "rescue medication", "med",
                     "meds", "medication"),
+    "nap": ("nap", "naps", "napped", "napping"),
+    "left_early": ("left early", "leaving early", "leave early", "left work early",
+                   "went home early", "home early", "early"),
     "misc": ("misc", "miscellaneous", "note", "notes", "other"),
 }
 _LABELLED = {
@@ -52,6 +57,8 @@ _LABELLED = {
     "food": ("breakfast", "lunch", "dinner", "snack"),
     "rescue_meds": ("triptan", "sumatriptan", "rizatriptan", "ubrelvy", "nurtec", "ibuprofen",
                     "advil", "tylenol", "excedrin", "meclizine", "zofran"),
+    "nap": (),
+    "left_early": (),
     "misc": (),
 }
 LOOKUP = {a: c for c, al in _GENERIC.items() for a in al}
@@ -69,6 +76,8 @@ DEFAULT_CODES = {
     "n": "symptoms: nausea {n}/10",
     "s": "sinus: sinus pain {n}/10",
     "r": "rescue meds: {text}",
+    "z": "nap: {n} min",
+    "le": "left early: {text}",
 }
 
 COMMANDS = [("rough day", "rough"), ("rough", "rough"), ("pause today", "pause"),
@@ -213,8 +222,9 @@ def parse_codes(line, codes):
         if not cat:
             return None
         if "{text}" in tmpl:
-            text = " ".join(([n] if n else []) + tokens[i + 1:]) or "taken"
-            out.append((cat, tmpl.replace("{text}", text).replace("{n}", n or "")))
+            text = " ".join(([n] if n else []) + tokens[i + 1:])
+            value = tmpl.replace("{text}", text).replace("{n}", n or "").strip()
+            out.append((cat, value or LABELS[cat].lower()))
             break
         if n is None:
             return None
@@ -248,7 +258,7 @@ def _command(subject):
 def _one_off_category(subject):
     """Match 1-2 leading words of the subject to a category."""
     words = subject.split()
-    for n in (2, 1):
+    for n in (3, 2, 1):
         if len(words) >= n:
             head = " ".join(words[:n])
             tail = ""
@@ -295,6 +305,8 @@ def parse_message(subject, body, sent_at=None, codes=None):
                         value = _clean(stripped)
                         break
             value, at = split_time(value, sent_at)
+            if not value and cat in NO_VALUE_NEEDED and word.lower() not in _KEEP_LABEL:
+                value = LABELS[cat].lower()
             add(cat, _labelled(word, value), at)
             return Parsed(entries)
 

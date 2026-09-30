@@ -1,7 +1,7 @@
 # Symptom Tracker
 
 A small Windows app that logs symptoms, sinus pain, water, electrolytes, caffeine,
-food, rescue meds and notes that you
+food, rescue meds, naps, leaving work early and notes that you
 email to a dedicated Gmail address, and emails you fill-in-the-blanks check-in
 reminders during the work day. Everything is stored locally in
 `symptom_log.db`. It only uses Python's standard library, so nothing to install.
@@ -61,12 +61,16 @@ Misc: slept badly
 | `ELECTROLYTES 1 serving`   | Electrolytes: 1 serving                |
 | `RESCUE sumatriptan 50mg`  | Rescue meds: sumatriptan 50mg          |
 | `LUNCH salad`              | Food: lunch: salad                     |
+| `NAP 30 min`               | Nap: 30 min                            |
+| `LEFT EARLY migraine`      | Left early: migraine                   |
+| `LEFT EARLY @1pm`          | Left early, at 1pm                     |
 | `MISC started new meds`    | Misc: started new meds                 |
 
 Other words that work: `symptom`, `headache`, `vertigo`, `nausea`, `fatigue`,
 `congestion`, `allergies`, `salt`, `lmnt`, `tea`, `soda`, `meds`, `triptan`,
 `advil`, `tylenol`, `excedrin`, `meclizine`, `breakfast`, `dinner`, `snack`,
-`note`. Case doesn't matter.
+`napped`, `went home early`, `left work early`, `note`. `NAP` and `LEFT EARLY`
+work on their own too. Case doesn't matter.
 
 **Short codes**: for when typing is too much. The subject (or a line of the
 body) can be just codes:
@@ -82,6 +86,8 @@ body) can be just codes:
 | `n4`        | Nausea 4/10                   |
 | `s4`        | Sinus pain 4/10               |
 | `r sumatriptan` | Rescue med: sumatriptan   |
+| `z30`       | Nap 30 min                    |
+| `le migraine` | Left early: migraine        |
 
 Combine them: `w16 m7` logs both. Change or add codes in Settings → Tracking.
 
@@ -96,7 +102,9 @@ Water in oz, cups, ml or liters is added up for the daily total.
 Set the times and days in Settings → Reminders. Each reminder shows how much
 water you've had against your daily goal, warns you if rescue meds are close to
 10 days this month, and has a **Fill in a full log** button plus one-tap
-buttons for common entries. You can also just reply and type the lines.
+buttons for common entries. The first reminder of the day also has **Napped
+yesterday** and **Left early yesterday** buttons. You can also just reply and
+type the lines.
 
 - A reminder is skipped if you logged something in the last hour (adjustable).
 - **Rough day**: tap the button in a reminder, email `ROUGH DAY`, or pick it

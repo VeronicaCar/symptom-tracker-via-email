@@ -28,7 +28,7 @@ def collect(store, start, end):
     weather = store.weather(start - DAY, end)
     pollen = store.pollen(start, end)
     days = {d: {"date": d, "symptoms": [], "sinus": [], "rescue_meds": [], "food": [],
-                "misc": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0,
+                "misc": [], "nap": [], "left_early": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0,
                 "worst": None, "sinus_worst": None, "migraine": False, "dizzy": False,
                 "logged": False}
             for d in _dates(start, end)}
@@ -73,6 +73,8 @@ def stats(days, water_goal):
         "dizzy_days": sum(d["dizzy"] for d in days),
         "sinus_days": sum(bool(d["sinus"]) for d in days),
         "rescue_days": sum(bool(d["rescue_meds"]) for d in days),
+        "nap_days": sum(bool(d["nap"]) for d in days),
+        "left_early_days": sum(bool(d["left_early"]) for d in days),
         "avg_worst": _avg([d["worst"] for d in days]),
         "avg_water": _avg([d["water"] for d in days if d["logged"]]),
         "water_goal_days": sum(d["water"] >= water_goal for d in days),
@@ -129,6 +131,7 @@ def weekly_summary(cfg, store, end=None):
         f"Water: {_fmt(s['avg_water'])} oz/day on average, goal of {goal} oz hit on "
         f"{s['water_goal_days']} of 7 days",
         f"Electrolytes: {_fmt(s['avg_electrolytes'], 1)}/day   Caffeine: {_fmt(s['avg_caffeine'], 1)}/day",
+        f"Naps: {s['nap_days']} days   Left work early: {s['left_early_days']} days",
     ]
     if s["pressure_drop_days"]:
         lines.append("Big pressure drops: " + ", ".join(
@@ -181,6 +184,11 @@ def _symptom_counts(days):
                 seen.add(name)
                 c[name] += 1
     return c.most_common(10)
+
+
+def _notes(d):
+    return ([f"left early: {v}" if v != "left early" else v for v in d["left_early"]]
+            + [f"nap: {v}" if v != "nap" else v for v in d["nap"]] + d["food"] + d["misc"])
 
 
 def _pattern(days, flag, label):
@@ -238,7 +246,8 @@ def doctor_report(cfg, store, start, end):
             f"<tr><td>{dt.date(y, m, 1).strftime('%b %Y')}</td><td>{ms['logged']}/{ms['days']}</td>"
             f"<td>{ms['symptom_days']}</td><td>{ms['migraine_days']}</td><td>{ms['dizzy_days']}</td>"
             f"<td>{ms['sinus_days']}</td><td>{_fmt(ms['avg_worst'], 1)}</td>"
-            f"<td><b>{ms['rescue_days']}</b></td><td>{_fmt(ms['avg_water'])}</td></tr>")
+            f"<td><b>{ms['rescue_days']}</b></td><td>{ms['left_early_days']}</td><td>{ms['nap_days']}</td>"
+            f"<td>{_fmt(ms['avg_water'])}</td></tr>")
 
     meds = Counter(v.lower() for d in days for v in d["rescue_meds"])
     patterns = [p for p in (
@@ -261,7 +270,7 @@ def doctor_report(cfg, store, start, end):
         f"<td class='num'>{_fmt(d['caffeine'] or None, 0)}</td>"
         f"<td>{escape(wx.describe(d['weather'], d['pressure_change']))}"
         + (f"<br><span class='dim'>Pollen: {escape(d['pollen'])}</span>" if d['pollen'] else "")
-        + f"</td><td>{cell(d['food'] + d['misc'])}</td></tr>"
+        + f"</td><td>{cell(_notes(d))}</td></tr>"
         for d in reversed(days) if d["logged"])
 
     top = "".join(f"<li>{escape(name)} <span class='dim'>({n} days)</span></li>"
@@ -299,6 +308,8 @@ def doctor_report(cfg, store, start, end):
   <div class="kpi"><b>{s['dizzy_days']}</b>dizzy/vertigo days</div>
   <div class="kpi"><b>{s['symptom_days']}</b>days with any symptom</div>
   <div class="kpi"><b>{s['rescue_days']}</b>rescue medication days</div>
+  <div class="kpi"><b>{s['left_early_days']}</b>days left work early</div>
+  <div class="kpi"><b>{s['nap_days']}</b>days needing a nap</div>
   <div class="kpi"><b>{_fmt(s['avg_worst'], 1)}</b>average worst severity (0–10)</div>
   <div class="kpi"><b>{_fmt(s['avg_water'])} oz</b>average water per day</div>
 </div>
@@ -317,7 +328,7 @@ def doctor_report(cfg, store, start, end):
 <h2>By month</h2>
 <table><tr><th>Month</th><th>Days logged</th><th>Symptom days</th><th>Migraine / headache</th>
 <th>Dizzy / vertigo</th><th>Sinus pain</th><th>Avg worst severity</th><th>Rescue med days</th>
-<th>Avg water (oz)</th></tr>{month_rows}</table>
+<th>Left early</th><th>Naps</th><th>Avg water (oz)</th></tr>{month_rows}</table>
 
 <h2>Most frequent symptoms</h2>
 <ul>{top or '<li class="dim">None logged</li>'}</ul>

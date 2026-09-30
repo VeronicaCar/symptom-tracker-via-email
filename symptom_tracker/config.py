@@ -9,6 +9,8 @@ CONFIG_PATH = APP_DIR / "config.json"
 DB_PATH = APP_DIR / "symptom_log.db"
 LOG_PATH = APP_DIR / "tracker.log"
 
+_FIRST_CODES = ["w", "e", "c", "m", "d", "v", "n", "s", "r"]  # built-ins before this was tracked
+
 DEFAULTS = {
     "tracker_email": "",            # the dedicated Gmail the app reads and sends from
     "allowed_senders": [],          # only mail from these addresses is logged
@@ -28,6 +30,7 @@ DEFAULTS = {
     "weather_label": "",
     "pollen_senders": [],           # addresses or domains of pollen report emails
     "short_codes": dict(DEFAULT_CODES),
+    "default_codes_seen": list(DEFAULT_CODES),  # so new built-in codes get added once
     "imap_host": "imap.gmail.com",
     "smtp_host": "smtp.gmail.com",
     "smtp_port": 465,
@@ -36,10 +39,17 @@ DEFAULTS = {
 
 def load():
     cfg = json.loads(json.dumps(DEFAULTS))  # deep copy
-    if CONFIG_PATH.exists():
-        cfg.update(json.loads(CONFIG_PATH.read_text(encoding="utf-8")))
+    saved = json.loads(CONFIG_PATH.read_text(encoding="utf-8")) if CONFIG_PATH.exists() else {}
+    cfg.update(saved)
     for key in ("allowed_senders", "pollen_senders"):
         cfg[key] = [a.strip().lower() for a in cfg[key] if a.strip()]
+    # Offer built-in codes added in later versions, without bringing back
+    # ones the user deleted.
+    seen = set(saved.get("default_codes_seen", _FIRST_CODES if saved else DEFAULT_CODES))
+    for code, spec in DEFAULT_CODES.items():
+        if code not in seen and code not in cfg["short_codes"]:
+            cfg["short_codes"][code] = spec
+    cfg["default_codes_seen"] = sorted(seen | set(DEFAULT_CODES))
     return cfg
 
 

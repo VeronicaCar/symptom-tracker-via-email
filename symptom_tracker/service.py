@@ -106,8 +106,11 @@ class Worker(threading.Thread):
 
     def send_reminder(self, slot=None):
         slot = slot or dt.datetime.now()
-        rough = self.store.day_mode(slot.date()) == "rough"
-        subject, text, html = mailer.reminder(self.cfg, slot, self.store, rough=rough)
+        mode = self.store.day_mode(slot.date())
+        slots = todays_slots(self.cfg, slot.date(), mode)
+        first = bool(slots) and slot == slots[0]
+        subject, text, html = mailer.reminder(self.cfg, slot, self.store,
+                                              rough=mode == "rough", first=first)
         mailer.send(self.cfg, self._password(), self.cfg["reminder_to"], subject, text, html)
         self.store.record_reminder(slot.strftime("%Y-%m-%d %H:%M"))
         self.events.put(("reminded", slot))

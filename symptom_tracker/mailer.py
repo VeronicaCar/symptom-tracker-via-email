@@ -159,9 +159,10 @@ def code_examples(codes):
         tmpl = tmpl.strip()
         label = parser.LABELS.get(parser.category_for(cat_word) or "", cat_word).lower()
         if "{text}" in tmpl:
-            code, value = f"{code} sumatriptan", tmpl.replace("{text}", "sumatriptan")
+            word = {"rescue meds": "sumatriptan", "left early": "migraine"}.get(label, "…")
+            code, value = f"{code} {word}", tmpl.replace("{text}", word)
         else:
-            n = "16" if "oz" in tmpl else "1" if "{n} " in tmpl else "6"
+            n = "16" if "oz" in tmpl else "30" if "min" in tmpl else "1" if "{n} " in tmpl else "6"
             code, value = f"{code}{n}", tmpl.replace("{n}", n)
         if label != "symptoms" and label.split()[0] not in value.lower():
             value = f"{label} {value}"
@@ -182,7 +183,7 @@ def _water_line(cfg, store, now):
     return line, min(oz / goal, 1) if goal else 0
 
 
-def reminder(cfg, when, store=None, rough=False):
+def reminder(cfg, when, store=None, rough=False, first=False):
     """Build (subject, text, html) for a check-in reminder."""
     to = cfg["tracker_email"]
     label = when.strftime("%I:%M %p").lstrip("0")
@@ -213,13 +214,16 @@ def reminder(cfg, when, store=None, rough=False):
         ("+ 8oz water", "WATER 8oz"), ("+ 16oz water", "WATER 16oz"),
         ("Electrolytes", "ELECTROLYTES 1 serving"), ("Caffeine", "CAFFEINE "),
         ("Migraine", "MIGRAINE /10"), ("Dizzy", "DIZZY /10"), ("Sinus pain", "SINUS /10"),
-        ("Rescue med", "RESCUE "), ("Food", "FOOD "), ("Note", "MISC "),
+        ("Rescue med", "RESCUE "), ("Food", "FOOD "), ("Nap", "NAP "),
+        ("Leaving early", "LEFT EARLY "), ("Note", "MISC "),
     ]
     bar = ""
     if progress is not None:
         bar = ("<div style='background:#e3ecef;border-radius:6px;height:10px;width:260px;margin:4px 0 10px'>"
                f"<div style='background:#2e86c1;border-radius:6px;height:10px;width:{progress * 100:.0f}%'>"
                "</div></div>")
+    yesterday = [("Napped yesterday", "NAP @yesterday"),
+                 ("Left early yesterday", "LEFT EARLY @yesterday")] if first else []
     day_buttons = [("Resume normal", "RESUME")] if rough else [
         ("Rough day (1 check-in)", "ROUGH DAY"), ("Pause today", "PAUSE")]
     html = (
@@ -230,6 +234,8 @@ def reminder(cfg, when, store=None, rough=False):
         f"<p>{_button(_mailto(to, 'LOG', TEMPLATE), 'Fill in a full log', primary=True)}</p>"
         "<p style='margin-bottom:2px;color:#555'>Or add just one thing:</p><p>"
         + "".join(_button(_mailto(to, s), label) for label, s in quick)
+        + ("</p><p style='margin-bottom:2px;color:#555'>Anything from yesterday?</p><p>"
+           + "".join(_button(_mailto(to, s), label) for label, s in yesterday) if yesterday else "")
         + "</p><p style='margin-bottom:2px;color:#555'>How's today going?</p><p>"
         + "".join(_button(_mailto(to, s), label) for label, s in day_buttons)
         + "</p><p style='color:#555;font-size:13px'>Short codes: "
