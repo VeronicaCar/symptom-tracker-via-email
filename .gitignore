@@ -1,0 +1,8 @@
+config.json
+symptom_log.db
+tracker.log
+*.csv
+__pycache__/
+reports/
+pass
+*.env
