@@ -57,6 +57,24 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(times("NAP @yesterday"), [dt.datetime(2026, 9, 29, 12, 0)])
         self.assertEqual(times("left work early @1pm"), [NOW.replace(hour=13)])
 
+    def test_monster_caffeine(self):
+        self.assertEqual(p("LOG", "Caffeine: 3/4 monster @ 8am\n"), [("caffeine", "3/4 monster (113 mg)")])
+        self.assertEqual(p("MONSTER"), [("caffeine", "monster (150 mg)")])
+        self.assertEqual(p("MONSTER 1/2"), [("caffeine", "1/2 monster (75 mg)")])
+        self.assertEqual(p("2 monsters"), [("caffeine", "2 monsters (300 mg)")])
+        self.assertEqual(p("caffeine 1 1/2 monsters"), [("caffeine", "1 1/2 monsters (225 mg)")])
+        self.assertEqual(p("caffeine half a monster"), [("caffeine", "half a monster (75 mg)")])
+        self.assertEqual(p("COFFEE"), [("caffeine", "coffee")])
+        self.assertEqual(p("caffeine 120 mg pre-workout"), [("caffeine", "120 mg pre-workout")])
+        self.assertEqual(parser.normalize("caffeine", "3/4 monster (113 mg)"), "3/4 monster (113 mg)")
+        self.assertEqual(servings("3/4 monster (113 mg)"), 0.75)
+        self.assertEqual(servings("monster (150 mg)"), 1)
+        drinks = config.drinks_from_text("monster = 150, red bull = 80mg")
+        self.assertEqual(drinks, {"monster": 150, "red bull": 80})
+        self.assertEqual(parser.caffeine_mg("2 red bulls", drinks), 160)
+        with self.assertRaises(ValueError):
+            config.drinks_from_text("monster 150")
+
     def test_vitals(self):
         self.assertEqual(p("BP 120/80"), [("bp", "120/80")])
         self.assertEqual(p("bp 120 80"), [("bp", "120/80")])

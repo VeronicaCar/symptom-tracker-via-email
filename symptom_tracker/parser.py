@@ -57,7 +57,8 @@ _LABELLED = {
     "sinus": ("congestion", "congested", "allergies", "allergy"),
     "water": (),
     "electrolytes": ("salt", "salt tabs", "sodium", "lmnt", "liquid iv", "liquidiv", "nuun"),
-    "caffeine": ("coffee", "tea", "soda", "espresso", "energy drink", "latte"),
+    "caffeine": ("coffee", "tea", "soda", "espresso", "energy drink", "latte", "monster",
+                 "monsters"),
     "food": ("breakfast", "lunch", "dinner", "snack"),
     "rescue_meds": ("triptan", "sumatriptan", "rizatriptan", "ubrelvy", "nurtec", "ibuprofen",
                     "advil", "tylenol", "excedrin", "meclizine", "zofran", "dramamine",
@@ -129,6 +130,8 @@ def _labelled(word, value):
         return value
     if not value:
         return word
+    if word.rstrip("s") in CAFFEINE_MG:  # "MONSTER 3/4" -> "3/4 monster"
+        return f"{value} {word}"
     return f"{word}: {value}" if word in _MEALS else f"{word} {value}"
 
 
@@ -154,11 +157,52 @@ def _normalize_vital(category, value):
     return value
 
 
+# mg of caffeine per drink; set from Settings. Monster Ultra Sunrise: 150 mg a can.
+CAFFEINE_MG = {"monster": 150}
+_QTY_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "half": 0.5, "quarter": 0.25}
+_QTY = r"(?:(\d+)\s+(?=\d+/))?(\d+/\d+|\d+(?:\.\d+)?|half|quarter|a|an|one|two|three)?"
+
+
+def _quantity(whole, part):
+    qty = float(whole or 0)
+    if not part:
+        return qty or 1.0
+    if "/" in part:
+        n, d = part.split("/")
+        return qty + (int(n) / int(d) if int(d) else 0)
+    return qty + (_QTY_WORDS[part.lower()] if part.lower() in _QTY_WORDS else float(part))
+
+
+def caffeine_mg(value, drinks=None):
+    """mg of caffeine in text like '3/4 monster', '1 1/2 monsters', 'half a monster'.
+    None when no known drink is named. An explicit '120 mg' wins."""
+    m = re.search(r"(\d+(?:\.\d+)?)\s*mg\b", value, re.I)
+    if m:
+        return float(m.group(1))
+    total, found = 0.0, False
+    for drink, mg in (drinks or CAFFEINE_MG).items():
+        pattern = _QTY + r"\s*(?:of\s+)?(?:an?\s+)?" + re.escape(drink) + r"s?\b"
+        for q in re.finditer(r"(?<![\w/])" + pattern, value, re.I):
+            total += _quantity(q.group(1), q.group(2)) * mg
+            found = True
+    return total if found else None
+
+
+def _normalize_caffeine(value):
+    if re.search(r"\dmg\b|\bmg\b", value, re.I):
+        return value
+    mg = caffeine_mg(value)
+    return f"{value} ({int(mg + 0.5)} mg)" if mg else value
+
+
 def normalize(category, value):
     """Tidy values that carry numbers: '2 migraine' left early -> '2h early: migraine',
-    HR '72' -> '72 bpm', O2 '98' -> '98%', BP '120 80' -> '120/80'."""
+    HR '72' -> '72 bpm', O2 '98' -> '98%', BP '120 80' -> '120/80',
+    caffeine '3/4 monster' -> '3/4 monster (113 mg)'."""
     if category in VITALS:
         return _normalize_vital(category, value)
+    if category == "caffeine":
+        return _normalize_caffeine(value)
     if category != "left_early":
         return value
     m = _HOURS_RE.match(value.strip())
@@ -313,8 +357,14 @@ def _command(subject):
 
 
 def _one_off_category(subject):
-    """Match 1-2 leading words of the subject to a category."""
+    """Match 1-3 leading words of the subject to a category."""
     words = subject.split()
+    # "2 monsters", "1 1/2 monsters", "half a monster" -> caffeine
+    for i, w in enumerate(words[:3]):
+        if w.lower().rstrip("s") in CAFFEINE_MG and i > 0:
+            if all(re.fullmatch(r"\d+(?:/\d+|\.\d+)?|half|quarter|a|an|of", x, re.I) for x in words[:i]):
+                return "caffeine", "caffeine", subject
+            break
     for n in (3, 2, 1):
         if len(words) >= n:
             head = " ".join(words[:n])

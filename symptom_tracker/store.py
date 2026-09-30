@@ -6,7 +6,7 @@ import re
 import sqlite3
 from contextlib import closing
 
-from .parser import SEVERITY_CATEGORIES, normalize, severity_of
+from .parser import SEVERITY_CATEGORIES, _quantity, caffeine_mg, normalize, severity_of
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS day_modes (
 _OZ_RE = re.compile(r"(\d+(?:\.\d+)?)\s*(oz|ounces?|cups?|ml|l|liters?|litres?)\b", re.I)
 _OZ_PER = {"oz": 1, "ounce": 1, "ounces": 1, "cup": 8, "cups": 8, "ml": 1 / 29.57,
            "l": 33.81, "liter": 33.81, "liters": 33.81, "litre": 33.81, "litres": 33.81}
-_COUNT_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)")
+_COUNT_RE = re.compile(r"^\s*(?:(\d+)\s+(?=\d+/))?(\d+/\d+|\d+(?:\.\d+)?|half)")
 
 
 def water_ounces(value):
@@ -60,8 +60,13 @@ def water_ounces(value):
 
 
 def servings(value):
-    """'2 cups' -> 2, 'coffee' -> 1. Used for caffeine and electrolytes."""
-    m = _COUNT_RE.match(value) or re.search(r"\b(\d+(?:\.\d+)?)\b", value)
+    """'2 cups' -> 2, '3/4 monster' -> 0.75, 'coffee' -> 1. Used for caffeine and
+    electrolytes. Amounts in mg are ignored."""
+    value = re.sub(r"\(?\s*\d+(?:\.\d+)?\s*mg\b\)?", "", value, flags=re.I)
+    m = _COUNT_RE.match(value)
+    if m:
+        return _quantity(m.group(1), m.group(2))
+    m = re.search(r"\b(\d+(?:\.\d+)?)\b", value)
     return float(m.group(1)) if m else 1.0
 
 
@@ -145,11 +150,13 @@ class Store:
             c.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
 
     def day_totals(self, day=None):
-        """Water oz, electrolyte and caffeine servings for one day."""
+        """Water oz, electrolyte and caffeine servings, and caffeine mg, for one day."""
         day = day or dt.date.today()
         rows = self.between(day, day + dt.timedelta(days=1))
-        totals = {"water": 0.0, "electrolytes": 0.0, "caffeine": 0.0}
+        totals = {"water": 0.0, "electrolytes": 0.0, "caffeine": 0.0, "caffeine_mg": 0.0}
         for _, cat, val, _ in rows:
+            if cat == "caffeine":
+                totals["caffeine_mg"] += caffeine_mg(val) or 0
             if cat == "water":
                 totals["water"] += water_ounces(val)
             elif cat in totals:

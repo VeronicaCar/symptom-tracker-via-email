@@ -63,6 +63,8 @@ BP, HR or O2 (`BP 113/75 @ 1 pm`).
 | `DIZZY 4/10`               | Symptoms: dizzy 4/10                   |
 | `SINUS 5/10`               | Sinus pain: 5/10                       |
 | `COFFEE`                   | Caffeine: coffee                       |
+| `MONSTER 3/4`              | Caffeine: 3/4 monster (113 mg)         |
+| `2 monsters`               | Caffeine: 2 monsters (300 mg)          |
 | `ELECTROLYTES 1 serving`   | Electrolytes: 1 serving                |
 | `RESCUE sumatriptan 50mg`  | Rescue meds: sumatriptan 50mg          |
 | `LUNCH salad`              | Food: lunch: salad                     |
@@ -113,6 +115,11 @@ Combine them: `w16 m7` logs both. Change or add codes in Settings → Tracking.
 The space before `@` is optional (`8/10@ 12 pm` works).
 
 Water in oz, cups, ml or liters is added up for the daily total.
+
+Monsters are converted to mg of caffeine at 150 mg a can (Monster Ultra
+Sunrise): `3/4 monster`, `1 1/2 monsters`, `half a monster` and plain `monster`
+all work, in a subject or on a `Caffeine:` line. Add other drinks in Settings →
+Tracking (e.g. `red bull = 80`). Daily caffeine is shown in mg when known.
 
 ## Reminders
 

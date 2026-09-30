@@ -6,7 +6,7 @@ from collections import Counter
 from html import escape
 
 from . import weather as wx
-from .parser import LABELS, VITALS, hours_early
+from .parser import LABELS, VITALS, caffeine_mg, hours_early
 from .store import servings, water_ounces
 
 MIGRAINE_RE = re.compile(r"migraine|headache|aura", re.I)
@@ -29,7 +29,7 @@ def collect(store, start, end):
     weather = store.weather(start - DAY, end)
     pollen = store.pollen(start, end)
     days = {d: {"date": d, "symptoms": [], "sinus": [], "rescue_meds": [], "food": [],
-                "misc": [], "nap": [], "left_early": [], "vitals": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0,
+                "misc": [], "nap": [], "left_early": [], "vitals": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0, "caffeine_mg": 0.0,
                 "worst": None, "sinus_worst": None, "migraine": False, "dizzy": False,
                 "logged": False}
             for d in _dates(start, end)}
@@ -44,6 +44,8 @@ def collect(store, start, end):
             d["water"] += water_ounces(value)
         elif cat in ("electrolytes", "caffeine"):
             d[cat] += servings(value)
+            if cat == "caffeine":
+                d["caffeine_mg"] += caffeine_mg(value) or 0
         elif cat in d:
             d[cat].append(value)
         if cat == "symptoms":
@@ -84,6 +86,8 @@ def stats(days, water_goal):
         "water_goal_days": sum(d["water"] >= water_goal for d in days),
         "avg_electrolytes": _avg([d["electrolytes"] for d in days if d["logged"]]),
         "avg_caffeine": _avg([d["caffeine"] for d in days if d["logged"]]),
+        "avg_caffeine_mg": _avg([d["caffeine_mg"] for d in days if d["logged"]])
+        if any(d["caffeine_mg"] for d in days) else None,
         "pressure_drop_days": [d for d in days if (d["pressure_change"] or 0) <= PRESSURE_DROP],
         "high_pollen_days": [d for d in days if HIGH_POLLEN_RE.search(d["pollen"])],
     }
@@ -134,7 +138,8 @@ def weekly_summary(cfg, store, end=None):
         rescue_line,
         f"Water: {_fmt(s['avg_water'])} oz/day on average, goal of {goal} oz hit on "
         f"{s['water_goal_days']} of 7 days",
-        f"Electrolytes: {_fmt(s['avg_electrolytes'], 1)}/day   Caffeine: {_fmt(s['avg_caffeine'], 1)}/day",
+        f"Electrolytes: {_fmt(s['avg_electrolytes'], 1)}/day   Caffeine: {_fmt(s['avg_caffeine'], 1)}/day"
+        + (f" ({s['avg_caffeine_mg']:.0f} mg/day)" if s["avg_caffeine_mg"] else ""),
         f"Naps: {s['nap_days']} days   Left work early: {s['left_early_days']} days"
         + (f" ({s['hours_missed']:g} hours missed)" if s["hours_missed"] else ""),
     ] + vitals_summary(days)
@@ -189,6 +194,12 @@ def _symptom_counts(days):
                 seen.add(name)
                 c[name] += 1
     return c.most_common(10)
+
+
+def _caffeine_cell(d):
+    if d["caffeine_mg"]:
+        return f"{d['caffeine_mg']:.0f} mg"
+    return _fmt(d["caffeine"] or None, 0)
 
 
 def _notes(d):
@@ -301,6 +312,8 @@ def doctor_report(cfg, store, start, end):
         _pattern(days, lambda d: d["water"] < goal, f"Under {goal} oz of water"),
         _pattern(days, lambda d: bool(HIGH_POLLEN_RE.search(d["pollen"])), "High pollen"),
         _pattern(days, lambda d: d["caffeine"] >= 3, "3+ caffeine servings"),
+        _pattern(days, lambda d: d["caffeine_mg"] >= 200, "200+ mg of caffeine")
+        if any(d["caffeine_mg"] for d in days) else None,
     ) if p]
 
     def cell(items):
@@ -311,7 +324,7 @@ def doctor_report(cfg, store, start, end):
         f"<td>{cell(d['symptoms'])}</td><td>{cell(d['sinus'])}</td><td>{cell(d['rescue_meds'])}</td>"
         f"<td class='num'>{_fmt(d['water'] or None, 0)}</td>"
         f"<td class='num'>{_fmt(d['electrolytes'] or None, 0)}</td>"
-        f"<td class='num'>{_fmt(d['caffeine'] or None, 0)}</td>"
+        f"<td class='num'>{_caffeine_cell(d)}</td>"
         f"<td>{cell([f'{LABELS[c]} {v}' for _, c, v in d['vitals']])}</td>"
         f"<td>{escape(wx.describe(d['weather'], d['pressure_change']))}"
         + (f"<br><span class='dim'>Pollen: {escape(d['pollen'])}</span>" if d['pollen'] else "")

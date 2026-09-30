@@ -97,13 +97,16 @@ class SettingsDialog(tk.Toplevel):
             + "ZIP code or \"City, ST\". Leave blank to turn weather off.")
         row("Tracking", 3, "Pollen report emails from", "pollen_senders", ", ".join(cfg["pollen_senders"]),
             hint="The sender address (or just its domain) of your pollen alert emails.")
-        ttk.Label(tabs["Tracking"], text="Short codes").grid(row=5, column=0, sticky="nw", pady=4)
+        row("Tracking", 5, "Caffeine per drink (mg)", "caffeine_drinks",
+            config.drinks_to_text(cfg["caffeine_drinks"]),
+            hint="\"3/4 monster\" is logged with its mg. Add more like: red bull = 80")
+        ttk.Label(tabs["Tracking"], text="Short codes").grid(row=7, column=0, sticky="nw", pady=4)
         self.codes = tk.Text(tabs["Tracking"], width=44, height=9, **theme.text_widget_options())
         self.codes.insert("1.0", config.codes_to_text(cfg["short_codes"]))
-        self.codes.grid(row=5, column=1, sticky="w", pady=4)
+        self.codes.grid(row=7, column=1, sticky="w", pady=4)
         ttk.Label(tabs["Tracking"], style="Muted.TLabel",
                   text="code = category: text   {n} = the number, {text} = the words after it").grid(
-            row=6, column=1, sticky="w")
+            row=8, column=1, sticky="w")
 
         bottom = ttk.Frame(outer)
         bottom.grid(row=1, column=0, sticky="we", pady=(12, 0))
@@ -139,6 +142,7 @@ class SettingsDialog(tk.Toplevel):
             weather_place=v["weather_place"],
             pollen_senders=[a.lower() for a in split(v["pollen_senders"])],
             short_codes=config.codes_from_text(self.codes.get("1.0", "end")),
+            caffeine_drinks=config.drinks_from_text(v["caffeine_drinks"]),
         )
         return cfg, v["password"]
 
@@ -338,7 +342,9 @@ class App(tk.Tk):
         parts = [f"Water {t['water']:.0f}/{cfg['water_goal_oz']} oz"]
         if t["electrolytes"]:
             parts.append(f"Electrolytes {t['electrolytes']:g}")
-        if t["caffeine"]:
+        if t["caffeine_mg"]:
+            parts.append(f"Caffeine {t['caffeine_mg']:.0f} mg")
+        elif t["caffeine"]:
             parts.append(f"Caffeine {t['caffeine']:g}")
         parts.append(f"Rescue med days this month {rescue}/10" + (" ⚠" if rescue >= 8 else ""))
         self.summary.set("   ·   ".join(parts))

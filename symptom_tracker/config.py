@@ -3,6 +3,7 @@
 import json
 
 from . import APP_DIR
+from . import parser
 from .parser import DEFAULT_CODES
 
 CONFIG_PATH = APP_DIR / "config.json"
@@ -30,6 +31,7 @@ DEFAULTS = {
     "weather_label": "",
     "pollen_senders": [],           # addresses or domains of pollen report emails
     "short_codes": dict(DEFAULT_CODES),
+    "caffeine_drinks": {"monster": 150},   # mg per drink (Monster Ultra Sunrise can)
     "default_codes_seen": list(DEFAULT_CODES),  # so new built-in codes get added once
     "imap_host": "imap.gmail.com",
     "smtp_host": "smtp.gmail.com",
@@ -50,7 +52,30 @@ def load():
         if code not in seen and code not in cfg["short_codes"]:
             cfg["short_codes"][code] = spec
     cfg["default_codes_seen"] = sorted(seen | set(DEFAULT_CODES))
+    parser.CAFFEINE_MG.clear()
+    parser.CAFFEINE_MG.update(cfg["caffeine_drinks"])
     return cfg
+
+
+def drinks_to_text(drinks):
+    return ", ".join(f"{name} = {mg:g}" for name, mg in drinks.items())
+
+
+def drinks_from_text(text):
+    """'monster = 150, red bull = 80' -> {'monster': 150.0, 'red bull': 80.0}."""
+    drinks = {}
+    for part in text.split(","):
+        if not part.strip():
+            continue
+        name, sep, mg = part.partition("=")
+        try:
+            if not sep or not name.strip():
+                raise ValueError
+            drinks[name.strip().lower()] = float(mg.strip().lower().removesuffix("mg"))
+        except ValueError:
+            raise ValueError(f"Caffeine per drink not understood: {part.strip()!r}\n"
+                             "Use the form: monster = 150") from None
+    return drinks
 
 
 def codes_to_text(codes):
