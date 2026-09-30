@@ -60,7 +60,8 @@ _LABELLED = {
     "caffeine": ("coffee", "tea", "soda", "espresso", "energy drink", "latte"),
     "food": ("breakfast", "lunch", "dinner", "snack"),
     "rescue_meds": ("triptan", "sumatriptan", "rizatriptan", "ubrelvy", "nurtec", "ibuprofen",
-                    "advil", "tylenol", "excedrin", "meclizine", "zofran"),
+                    "advil", "tylenol", "excedrin", "meclizine", "zofran", "dramamine",
+                    "bonine", "ondansetron"),
     "nap": (),
     "left_early": (),
     "bp": (),
@@ -93,9 +94,8 @@ COMMANDS = [("rough day", "rough"), ("rough", "rough"), ("pause today", "pause")
 
 _PREFIX_RE = re.compile(r"^\s*((re|fw|fwd)\s*:\s*)+", re.IGNORECASE)
 _LINE_RE = re.compile(r"^[\s>]*([A-Za-z][A-Za-z0-9 ]{0,20}?)\s*:\s*(.*)$")
-_SEVERITY_RE = re.compile(r"\b(10|[0-9])\s*/\s*10\b")
+_SEVERITY_RE = re.compile(r"(?<![\d.])(10|[0-9](?:\.\d+)?)\s*/\s*10\b")
 _PLACEHOLDER_RE = re.compile(r"^[\s_.\-]*$")
-_AT_RE = re.compile(r"(?:^|\s)@\s*([^@]+?)\s*$")
 _CLOCK_RE = re.compile(r"^(\d{1,2})(?::?(\d{2}))?(am|pm|a|p)?$")
 _CODE_RE = re.compile(r"([a-z]+)(\d+(?:\.\d+)?)?", re.IGNORECASE)
 _WORD_TIMES = {"noon": (12, 0), "midnight": (0, 0), "morning": (9, 0), "lunch": (12, 0),
@@ -179,9 +179,12 @@ def hours_early(value):
 
 
 def severity_of(value):
-    """Pull a 0-10 severity out of text like 'headache 6/10'."""
+    """Pull a 0-10 severity out of text like 'headache 6/10' or '6.5/10'."""
     m = _SEVERITY_RE.search(value)
-    return int(m.group(1)) if m else None
+    if not m:
+        return None
+    n = float(m.group(1))
+    return int(n) if n.is_integer() else n
 
 
 # ---- backdating -----------------------------------------------------------
@@ -245,12 +248,13 @@ def parse_when(text, ref):
 
 
 def split_time(text, ref):
-    """'16oz @2pm' -> ('16oz', datetime). Unparseable @ text is left alone."""
-    m = _AT_RE.search(text)
-    if m and ref is not None:
-        when = parse_when(m.group(1), ref)
+    """'16oz @2pm' -> ('16oz', datetime). The space before @ is optional
+    ('8/10@ 12 pm'). Unparseable @ text, like an email address, is left alone."""
+    pos = text.rfind("@")
+    if pos >= 0 and ref is not None:
+        when = parse_when(text[pos + 1:], ref)
         if when:
-            return text[:m.start()].strip(), when
+            return text[:pos].strip(), when
     return text, None
 
 
@@ -372,10 +376,24 @@ def parse_message(subject, body, sent_at=None, codes=None):
                 add(cat, _labelled(m.group(1), _clean(value)), at)
             continue
         if line.lstrip().startswith(">"):
-            continue  # codes only count in your own text, not quoted mail
+            continue  # codes and one-offs only count in your own text, not quoted mail
         text, at = split_time(line.strip(), sent_at)
-        for cat, value in parse_codes(text, codes) or []:
-            add(cat, value, at)
+        coded = parse_codes(text, codes)
+        if coded:
+            for cat, value in coded:
+                add(cat, value, at)
+            continue
+        # A subject-style line without a colon ("LEFT EARLY 3.5h", "BP 113/75").
+        # Only when the category word is in capitals or is BP/HR/O2, so ordinary
+        # sentences that start with "Water" or "Note" aren't logged.
+        one_off = _one_off_category(text) if text else None
+        if one_off:
+            cat, word, value = one_off
+            if word.isupper() or cat in VITALS:
+                value = _clean(value)
+                if not value and cat in NO_VALUE_NEEDED and word.lower() not in _KEEP_LABEL:
+                    value = LABELS[cat].lower()
+                add(cat, _labelled(word, value), at)
     return Parsed(entries)
 
 

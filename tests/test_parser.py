@@ -111,6 +111,13 @@ class FullLogTests(unittest.TestCase):
         body = "> Symptoms: dizzy\n> Water: \n> Food: crackers\n"
         self.assertEqual(p("RE: Symptom check-in", body), [("symptoms", "dizzy"), ("food", "crackers")])
 
+    def test_colonless_lines_in_body(self):
+        body = ("Water: 24 oz @ 11 am\nLEFT EARLY 3.5h vertigo\nBP 113/75 @ 1 pm\nhr 81 @ 1 pm\n"
+                "O2 99 @ 1 pm\nWater was cold today\nNote to self\n> MIGRAINE 9/10\n")
+        self.assertEqual(p("LOG", body), [
+            ("water", "24 oz"), ("left_early", "3.5h early: vertigo"), ("bp", "113/75"),
+            ("hr", "81 bpm"), ("o2", "99%")])
+
     def test_signature_ignored(self):
         self.assertEqual(p("log", "Water: 8oz\n--\nMisc: my signature\n"), [("water", "8oz")])
 
@@ -144,6 +151,12 @@ class BackdateTests(unittest.TestCase):
         at = NOW.replace(hour=12)
         self.assertEqual(times("LOG @noon", "Water: 8oz\nFood: toast @11am\n"),
                          [at, NOW.replace(hour=11)])
+
+    def test_no_space_before_at(self):
+        self.assertEqual(p("LOG", "Symptoms: extreme vertigo 8/10@ 12 pm\n"),
+                         [("symptoms", "extreme vertigo 8/10")])
+        self.assertEqual(times("LOG", "Symptoms: extreme vertigo 8/10@ 12 pm\n"), [NOW.replace(hour=12)])
+        self.assertEqual(times("WATER 8oz@2pm"), [NOW.replace(hour=14)])
 
     def test_email_addresses_left_alone(self):
         self.assertEqual(p("MISC emailed bob@x.com"), [("misc", "emailed bob@x.com")])
@@ -195,6 +208,8 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(parser.severity_of("headache 6/10"), 6)
         self.assertEqual(parser.severity_of("pain 10 / 10"), 10)
         self.assertIsNone(parser.severity_of("headache"))
+        self.assertEqual(parser.severity_of("headache 6.5/10"), 6.5)
+        self.assertEqual(parser.severity_of("migraine 8/10"), 8)
 
     def test_amounts(self):
         self.assertEqual(water_ounces("16oz"), 16)

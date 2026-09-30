@@ -50,6 +50,10 @@ Rescue meds: sumatriptan 50mg
 Misc: slept badly
 ```
 
+Inside a full log you can also use subject-style lines without a colon, as
+long as the category word is in capitals (`LEFT EARLY 3.5h vertigo`) or is
+BP, HR or O2 (`BP 113/75 @ 1 pm`).
+
 **One thing at a time**: put the category and the entry in the subject, body can be empty.
 
 | Subject                    | Logged as                              |
@@ -106,6 +110,7 @@ Combine them: `w16 m7` logs both. Change or add codes in Settings → Tracking.
 **Backdating**: end anything with `@time` to log it for when it happened:
 `WATER 16oz @2pm`, `m6 @yesterday 4pm`, `d5 @mon noon`, `w8 @last night`.
 `LOG @noon` backdates a whole email. A time later than now means yesterday.
+The space before `@` is optional (`8/10@ 12 pm` works).
 
 Water in oz, cups, ml or liters is added up for the daily total.
 
