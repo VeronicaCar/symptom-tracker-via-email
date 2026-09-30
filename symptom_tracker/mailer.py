@@ -159,8 +159,12 @@ def code_examples(codes):
         tmpl = tmpl.strip()
         label = parser.LABELS.get(parser.category_for(cat_word) or "", cat_word).lower()
         if "{text}" in tmpl:
-            word = {"rescue meds": "sumatriptan", "left early": "migraine"}.get(label, "…")
-            code, value = f"{code} {word}", tmpl.replace("{text}", word)
+            word = {"rescue meds": "sumatriptan", "left early": "2 migraine"}.get(label, "…")
+            cat = parser.category_for(cat_word)
+            example = f"{code}{word}" if cat == "left_early" else f"{code} {word}"
+            code, value = example, parser.normalize(cat, tmpl.replace("{text}", word))
+            if parser.hours_early(value) is not None:
+                value = f"left {value}"
         else:
             n = "16" if "oz" in tmpl else "30" if "min" in tmpl else "1" if "{n} " in tmpl else "6"
             code, value = f"{code}{n}", tmpl.replace("{n}", n)
@@ -215,7 +219,7 @@ def reminder(cfg, when, store=None, rough=False, first=False):
         ("Electrolytes", "ELECTROLYTES 1 serving"), ("Caffeine", "CAFFEINE "),
         ("Migraine", "MIGRAINE /10"), ("Dizzy", "DIZZY /10"), ("Sinus pain", "SINUS /10"),
         ("Rescue med", "RESCUE "), ("Food", "FOOD "), ("Nap", "NAP "),
-        ("Leaving early", "LEFT EARLY "), ("Note", "MISC "),
+        ("Leaving early", "LEFT EARLY 2h "), ("Note", "MISC "),
     ]
     bar = ""
     if progress is not None:
@@ -223,7 +227,7 @@ def reminder(cfg, when, store=None, rough=False, first=False):
                f"<div style='background:#2e86c1;border-radius:6px;height:10px;width:{progress * 100:.0f}%'>"
                "</div></div>")
     yesterday = [("Napped yesterday", "NAP @yesterday"),
-                 ("Left early yesterday", "LEFT EARLY @yesterday")] if first else []
+                 ("Left early yesterday", "LEFT EARLY 2h @yesterday")] if first else []
     day_buttons = [("Resume normal", "RESUME")] if rough else [
         ("Rough day (1 check-in)", "ROUGH DAY"), ("Pause today", "PAUSE")]
     html = (

@@ -6,6 +6,7 @@ from collections import Counter
 from html import escape
 
 from . import weather as wx
+from .parser import hours_early
 from .store import servings, water_ounces
 
 MIGRAINE_RE = re.compile(r"migraine|headache|aura", re.I)
@@ -75,6 +76,7 @@ def stats(days, water_goal):
         "rescue_days": sum(bool(d["rescue_meds"]) for d in days),
         "nap_days": sum(bool(d["nap"]) for d in days),
         "left_early_days": sum(bool(d["left_early"]) for d in days),
+        "hours_missed": sum(hours_early(v) or 0 for d in days for v in d["left_early"]),
         "avg_worst": _avg([d["worst"] for d in days]),
         "avg_water": _avg([d["water"] for d in days if d["logged"]]),
         "water_goal_days": sum(d["water"] >= water_goal for d in days),
@@ -131,7 +133,8 @@ def weekly_summary(cfg, store, end=None):
         f"Water: {_fmt(s['avg_water'])} oz/day on average, goal of {goal} oz hit on "
         f"{s['water_goal_days']} of 7 days",
         f"Electrolytes: {_fmt(s['avg_electrolytes'], 1)}/day   Caffeine: {_fmt(s['avg_caffeine'], 1)}/day",
-        f"Naps: {s['nap_days']} days   Left work early: {s['left_early_days']} days",
+        f"Naps: {s['nap_days']} days   Left work early: {s['left_early_days']} days"
+        + (f" ({s['hours_missed']:g} hours missed)" if s["hours_missed"] else ""),
     ]
     if s["pressure_drop_days"]:
         lines.append("Big pressure drops: " + ", ".join(
@@ -187,7 +190,8 @@ def _symptom_counts(days):
 
 
 def _notes(d):
-    return ([f"left early: {v}" if v != "left early" else v for v in d["left_early"]]
+    return ([f"left {v}" if hours_early(v) is not None else
+             v if v == "left early" else f"left early: {v}" for v in d["left_early"]]
             + [f"nap: {v}" if v != "nap" else v for v in d["nap"]] + d["food"] + d["misc"])
 
 
@@ -246,7 +250,8 @@ def doctor_report(cfg, store, start, end):
             f"<tr><td>{dt.date(y, m, 1).strftime('%b %Y')}</td><td>{ms['logged']}/{ms['days']}</td>"
             f"<td>{ms['symptom_days']}</td><td>{ms['migraine_days']}</td><td>{ms['dizzy_days']}</td>"
             f"<td>{ms['sinus_days']}</td><td>{_fmt(ms['avg_worst'], 1)}</td>"
-            f"<td><b>{ms['rescue_days']}</b></td><td>{ms['left_early_days']}</td><td>{ms['nap_days']}</td>"
+            f"<td><b>{ms['rescue_days']}</b></td><td>{ms['left_early_days']}"
+            + (f" ({ms['hours_missed']:g}h)" if ms["hours_missed"] else "") + f"</td><td>{ms['nap_days']}</td>"
             f"<td>{_fmt(ms['avg_water'])}</td></tr>")
 
     meds = Counter(v.lower() for d in days for v in d["rescue_meds"])
@@ -308,7 +313,7 @@ def doctor_report(cfg, store, start, end):
   <div class="kpi"><b>{s['dizzy_days']}</b>dizzy/vertigo days</div>
   <div class="kpi"><b>{s['symptom_days']}</b>days with any symptom</div>
   <div class="kpi"><b>{s['rescue_days']}</b>rescue medication days</div>
-  <div class="kpi"><b>{s['left_early_days']}</b>days left work early</div>
+  <div class="kpi"><b>{s['left_early_days']}</b>days left work early{f" ({s['hours_missed']:g} hours missed)" if s['hours_missed'] else ""}</div>
   <div class="kpi"><b>{s['nap_days']}</b>days needing a nap</div>
   <div class="kpi"><b>{_fmt(s['avg_worst'], 1)}</b>average worst severity (0–10)</div>
   <div class="kpi"><b>{_fmt(s['avg_water'])} oz</b>average water per day</div>

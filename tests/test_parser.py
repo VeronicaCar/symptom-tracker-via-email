@@ -57,6 +57,20 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(times("NAP @yesterday"), [dt.datetime(2026, 9, 29, 12, 0)])
         self.assertEqual(times("left work early @1pm"), [NOW.replace(hour=13)])
 
+    def test_hours_early(self):
+        self.assertEqual(p("LEFT EARLY 2h migraine"), [("left_early", "2h early: migraine")])
+        self.assertEqual(p("LEFT EARLY 2 hours"), [("left_early", "2h early")])
+        self.assertEqual(p("left early 1.5 hrs, dizzy"), [("left_early", "1.5h early: dizzy")])
+        self.assertEqual(p("LEFT EARLY 3"), [("left_early", "3h early")])
+        self.assertEqual(p("le2 migraine"), [("left_early", "2h early: migraine")])
+        self.assertEqual(p("le3"), [("left_early", "3h early")])
+        self.assertEqual(p("LOG", "Left early: 2h migraine\n"), [("left_early", "2h early: migraine")])
+        self.assertEqual(p("LEFT EARLY 2 pm migraine"), [("left_early", "2 pm migraine")])
+        self.assertEqual(p("LEFT EARLY 2h @yesterday"), [("left_early", "2h early")])
+        self.assertEqual(parser.normalize("left_early", "2h early: migraine"), "2h early: migraine")
+        self.assertEqual(parser.hours_early("2.5h early: migraine"), 2.5)
+        self.assertIsNone(parser.hours_early("migraine"))
+
 
 class FullLogTests(unittest.TestCase):
     def test_full_log(self):
@@ -242,7 +256,7 @@ class StoreAndReportTests(unittest.TestCase):
             if i % 4 == 0:
                 entries.append(("symptoms", "dizzy 4/10", day))
             if i == 1:
-                entries += [("left_early", "migraine", day), ("nap", "1 hr", day)]
+                entries += [("left_early", "2 migraine", day), ("nap", "1 hr", day)]
             s.add_entries(entries)
         s.save_weather([{"day": str(today - dt.timedelta(days=i)), "temp_max": 80, "temp_min": 60,
                          "humidity": 50, "pressure_mean": 1015 - (8 if i == 3 else 0),
@@ -253,11 +267,12 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertIn("Migraine/headache days: 3", text)
         self.assertIn("Big pressure drops", text)
         self.assertIn("High pollen", text)
-        self.assertIn("Naps: 1 days   Left work early: 1 days", text)
+        self.assertIn("Naps: 1 days   Left work early: 1 days (2 hours missed)", text)
         page = report.doctor_report(cfg, s, today - dt.timedelta(days=29), today)
         self.assertIn("<svg", page)
         self.assertIn("sumatriptan", page)
-        self.assertIn("left early: migraine", page)
+        self.assertIn("left 2h early: migraine", page)
+        self.assertIn("2 hours missed", page)
         self.assertEqual(s.rescue_days(today.year, today.month),
                          len({(today - dt.timedelta(days=i)) for i in range(0, 20, 3)
                               if (today - dt.timedelta(days=i)).month == today.month}))
@@ -277,7 +292,7 @@ class StoreAndReportTests(unittest.TestCase):
         _, _, first_html = mailer.reminder(cfg, NOW, self.store, first=True)
         self.assertIn("NAP%20%40yesterday", first_html)
         self.assertNotIn("NAP%20%40yesterday", html)
-        self.assertIn("le migraine = left early migraine", text)
+        self.assertIn("le2 migraine = left 2h early: migraine", text)
         self.assertIn("z30 = nap 30 min", text)
 
 

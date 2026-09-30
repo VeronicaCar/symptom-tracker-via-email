@@ -6,7 +6,7 @@ import re
 import sqlite3
 from contextlib import closing
 
-from .parser import SEVERITY_CATEGORIES, severity_of
+from .parser import SEVERITY_CATEGORIES, normalize, severity_of
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
@@ -96,7 +96,7 @@ class Store:
         when = when or dt.datetime.now()
         rows = []
         for e in entries:
-            cat, val = e[0], e[1]
+            cat, val = e[0], normalize(e[0], e[1])
             at = e[2] if len(e) > 2 and e[2] else when
             sev = severity_of(val) if cat in SEVERITY_CATEGORIES else None
             rows.append((_iso(at), cat, val, sev, source, message_id, _now()))

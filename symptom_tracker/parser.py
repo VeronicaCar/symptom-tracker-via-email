@@ -125,6 +125,31 @@ def _labelled(word, value):
     return f"{word}: {value}" if word in _MEALS else f"{word} {value}"
 
 
+_HOURS_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(h|hrs?|hours?)?(?=[\s,:;\-]|$)(.*)$", re.I)
+_EARLY_RE = re.compile(r"^(\d+(?:\.\d+)?)h early\b")
+
+
+def normalize(category, value):
+    """Tidy values that carry a number: '2 migraine' left early -> '2h early: migraine'."""
+    if category != "left_early":
+        return value
+    m = _HOURS_RE.match(value.strip())
+    if not m:
+        return value
+    rest = m.group(3).strip()
+    if re.match(r"^(am|pm|a\.m|p\.m)\b", rest, re.I):  # "2 pm" is a time, not hours
+        return value
+    rest = re.sub(r"^early\b", "", rest, flags=re.I).strip(" ,:;-")
+    hours = m.group(1)[:-2] if m.group(1).endswith(".0") else m.group(1)
+    return f"{hours}h early" + (f": {rest}" if rest else "")
+
+
+def hours_early(value):
+    """Hours from a normalized left-early value, or None."""
+    m = _EARLY_RE.match(value)
+    return float(m.group(1)) if m else None
+
+
 def severity_of(value):
     """Pull a 0-10 severity out of text like 'headache 6/10'."""
     m = _SEVERITY_RE.search(value)
@@ -277,7 +302,7 @@ def parse_message(subject, body, sent_at=None, codes=None):
     entries = []
 
     def add(cat, value, at):
-        e = Entry(cat, value, at or default_at)
+        e = Entry(cat, normalize(cat, value), at or default_at)
         if value and e not in entries:
             entries.append(e)
 

@@ -62,15 +62,18 @@ Misc: slept badly
 | `RESCUE sumatriptan 50mg`  | Rescue meds: sumatriptan 50mg          |
 | `LUNCH salad`              | Food: lunch: salad                     |
 | `NAP 30 min`               | Nap: 30 min                            |
-| `LEFT EARLY migraine`      | Left early: migraine                   |
-| `LEFT EARLY @1pm`          | Left early, at 1pm                     |
+| `LEFT EARLY 2h migraine`   | Left early: 2h early: migraine         |
+| `LEFT EARLY 1.5 hours`     | Left early: 1.5h early                 |
+| `LEFT EARLY migraine`      | Left early: migraine (hours unknown)   |
 | `MISC started new meds`    | Misc: started new meds                 |
 
 Other words that work: `symptom`, `headache`, `vertigo`, `nausea`, `fatigue`,
 `congestion`, `allergies`, `salt`, `lmnt`, `tea`, `soda`, `meds`, `triptan`,
 `advil`, `tylenol`, `excedrin`, `meclizine`, `breakfast`, `dinner`, `snack`,
 `napped`, `went home early`, `left work early`, `note`. `NAP` and `LEFT EARLY`
-work on their own too. Case doesn't matter.
+work on their own too. For leaving early, the first number is how many hours
+early (`LEFT EARLY 2` = 2 hours); the weekly summary and doctor report add up
+hours missed. Case doesn't matter.
 
 **Short codes**: for when typing is too much. The subject (or a line of the
 body) can be just codes:
@@ -87,7 +90,7 @@ body) can be just codes:
 | `s4`        | Sinus pain 4/10               |
 | `r sumatriptan` | Rescue med: sumatriptan   |
 | `z30`       | Nap 30 min                    |
-| `le migraine` | Left early: migraine        |
+| `le2 migraine` | Left 2h early: migraine    |
 
 Combine them: `w16 m7` logs both. Change or add codes in Settings → Tracking.
 
