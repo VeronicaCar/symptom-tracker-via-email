@@ -57,6 +57,21 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(times("NAP @yesterday"), [dt.datetime(2026, 9, 29, 12, 0)])
         self.assertEqual(times("left work early @1pm"), [NOW.replace(hour=13)])
 
+    def test_vitals(self):
+        self.assertEqual(p("BP 120/80"), [("bp", "120/80")])
+        self.assertEqual(p("bp 120 80"), [("bp", "120/80")])
+        self.assertEqual(p("Blood pressure 118/76 standing"), [("bp", "118/76 standing")])
+        self.assertEqual(p("HR 72"), [("hr", "72 bpm")])
+        self.assertEqual(p("hr 72 118"), [("hr", "72 to 118 bpm (+46)")])
+        self.assertEqual(p("heart rate 72 lying 118 standing"), [("hr", "72 lying 118 standing")])
+        self.assertEqual(p("O2 98"), [("o2", "98%")])
+        self.assertEqual(p("02 97"), [("o2", "97%")])
+        self.assertEqual(p("spo2 96%"), [("o2", "96%")])
+        self.assertEqual(times("pulse 90 @2pm"), [NOW.replace(hour=14)])
+        self.assertEqual(p("LOG", "BP: 110/70\nHeart rate: 70 to 115\nO2: 99\n"),
+                         [("bp", "110/70"), ("hr", "70 to 115 bpm (+45)"), ("o2", "99%")])
+        self.assertNotIn("BP", mailer.TEMPLATE)
+
     def test_hours_early(self):
         self.assertEqual(p("LEFT EARLY 2h migraine"), [("left_early", "2h early: migraine")])
         self.assertEqual(p("LEFT EARLY 2 hours"), [("left_early", "2h early")])
@@ -256,7 +271,8 @@ class StoreAndReportTests(unittest.TestCase):
             if i % 4 == 0:
                 entries.append(("symptoms", "dizzy 4/10", day))
             if i == 1:
-                entries += [("left_early", "2 migraine", day), ("nap", "1 hr", day)]
+                entries += [("left_early", "2 migraine", day), ("nap", "1 hr", day),
+                            ("bp", "110/70", day), ("hr", "70 110", day), ("o2", "97", day)]
             s.add_entries(entries)
         s.save_weather([{"day": str(today - dt.timedelta(days=i)), "temp_max": 80, "temp_min": 60,
                          "humidity": 50, "pressure_mean": 1015 - (8 if i == 3 else 0),
@@ -273,6 +289,10 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertIn("sumatriptan", page)
         self.assertIn("left 2h early: migraine", page)
         self.assertIn("2 hours missed", page)
+        self.assertIn("BP average 110/70", text)
+        self.assertIn("30+ bpm on 1 of 1 checks", text)
+        self.assertIn("O2 average 97%", page)
+        self.assertIn("70 to 110 bpm (+40)", page)
         self.assertEqual(s.rescue_days(today.year, today.month),
                          len({(today - dt.timedelta(days=i)) for i in range(0, 20, 3)
                               if (today - dt.timedelta(days=i)).month == today.month}))

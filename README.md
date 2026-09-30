@@ -1,7 +1,8 @@
 # Symptom Tracker
 
 A small Windows app that logs symptoms, sinus pain, water, electrolytes, caffeine,
-food, rescue meds, naps, leaving work early and notes that you
+food, rescue meds, naps, leaving work early, blood pressure, heart rate, O2
+and notes that you
 email to a dedicated Gmail address, and emails you fill-in-the-blanks check-in
 reminders during the work day. Everything is stored locally in
 `symptom_log.db`. It only uses Python's standard library, so nothing to install.
@@ -65,6 +66,10 @@ Misc: slept badly
 | `LEFT EARLY 2h migraine`   | Left early: 2h early: migraine         |
 | `LEFT EARLY 1.5 hours`     | Left early: 1.5h early                 |
 | `LEFT EARLY migraine`      | Left early: migraine (hours unknown)   |
+| `BP 120/80`                | Blood pressure: 120/80                 |
+| `HR 72`                    | Heart rate: 72 bpm                     |
+| `HR 72 118`                | Heart rate: 72 to 118 bpm (+46), lying then standing |
+| `O2 98`                    | O2: 98%                                |
 | `MISC started new meds`    | Misc: started new meds                 |
 
 Other words that work: `symptom`, `headache`, `vertigo`, `nausea`, `fatigue`,
@@ -73,7 +78,11 @@ Other words that work: `symptom`, `headache`, `vertigo`, `nausea`, `fatigue`,
 `napped`, `went home early`, `left work early`, `note`. `NAP` and `LEFT EARLY`
 work on their own too. For leaving early, the first number is how many hours
 early (`LEFT EARLY 2` = 2 hours); the weekly summary and doctor report add up
-hours missed. Case doesn't matter.
+hours missed. Blood pressure, heart rate and O2 aren't in the check-in
+template but can be sent any time (`blood pressure`, `pulse`, `heart rate`,
+`spo2`, `oxygen` and `02` also work). Two heart rate numbers are read as
+lying or sitting, then standing, and the rise is worked out for you.
+Case doesn't matter.
 
 **Short codes**: for when typing is too much. The subject (or a line of the
 body) can be just codes:
@@ -140,8 +149,8 @@ or use **Send email → Weekly summary now** to get one any time.
 **Doctor report** in the window makes a one-page report for the last 30 days,
 90 days, 6 months or year: headline numbers, a severity chart with rescue med
 days and water, a by-month table, most frequent symptoms, rescue meds, simple
-pattern comparisons (pressure drops, low water, pollen, caffeine) and the full
-daily log. It opens in your browser; use Print → Save as PDF to bring or send
+pattern comparisons (pressure drops, low water, pollen, caffeine), a vitals
+section (BP, heart rate with lying-to-standing rises, O2) and the full daily log. It opens in your browser; use Print → Save as PDF to bring or send
 it. Reports are saved in the `reports` folder.
 
 ## In the window

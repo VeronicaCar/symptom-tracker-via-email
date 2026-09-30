@@ -22,11 +22,12 @@ import re
 from typing import NamedTuple, Optional
 
 CATEGORIES = ("symptoms", "sinus", "water", "electrolytes", "caffeine", "food",
-              "rescue_meds", "nap", "left_early", "misc")
+              "rescue_meds", "nap", "left_early", "bp", "hr", "o2", "misc")
 LABELS = {"symptoms": "Symptoms", "sinus": "Sinus pain", "water": "Water",
           "electrolytes": "Electrolytes", "caffeine": "Caffeine", "food": "Food",
           "rescue_meds": "Rescue meds", "nap": "Nap", "left_early": "Left early",
-          "misc": "Misc"}
+          "bp": "Blood pressure", "hr": "Heart rate", "o2": "O2", "misc": "Misc"}
+VITALS = ("bp", "hr", "o2")
 SEVERITY_CATEGORIES = {"symptoms", "sinus"}
 NO_VALUE_NEEDED = {"nap", "left_early", "rescue_meds"}  # "LEFT EARLY" alone is enough
 
@@ -44,6 +45,9 @@ _GENERIC = {
     "nap": ("nap", "naps", "napped", "napping"),
     "left_early": ("left early", "leaving early", "leave early", "left work early",
                    "went home early", "home early", "early"),
+    "bp": ("bp", "blood pressure", "bloodpressure"),
+    "hr": ("hr", "heart rate", "heartrate", "pulse", "bpm"),
+    "o2": ("o2", "02", "spo2", "sp02", "oxygen", "o2 sat", "sats", "sat"),
     "misc": ("misc", "miscellaneous", "note", "notes", "other"),
 }
 _LABELLED = {
@@ -59,6 +63,9 @@ _LABELLED = {
                     "advil", "tylenol", "excedrin", "meclizine", "zofran"),
     "nap": (),
     "left_early": (),
+    "bp": (),
+    "hr": (),
+    "o2": (),
     "misc": (),
 }
 LOOKUP = {a: c for c, al in _GENERIC.items() for a in al}
@@ -129,8 +136,29 @@ _HOURS_RE = re.compile(r"^(\d+(?:\.\d+)?)\s*(h|hrs?|hours?)?(?=[\s,:;\-]|$)(.*)$
 _EARLY_RE = re.compile(r"^(\d+(?:\.\d+)?)h early\b")
 
 
+_NUMS_ONLY_RE = re.compile(r"^\s*(\d{2,3})(?:\s*(?:/|,|\s|->|→|to)\s*(\d{2,3}))?\s*$")
+
+
+def _normalize_vital(category, value):
+    m = _NUMS_ONLY_RE.match(value)
+    if not m:
+        return value  # has words ("72 lying, 118 standing"); keep as written
+    a, b = m.group(1), m.group(2)
+    if category == "bp":
+        return f"{a}/{b}" if b else value
+    if category == "hr":
+        # Two readings are treated as lying/sitting then standing.
+        return f"{a} to {b} bpm ({int(b) - int(a):+d})" if b else f"{a} bpm"
+    if category == "o2":
+        return value if b else f"{a}%"
+    return value
+
+
 def normalize(category, value):
-    """Tidy values that carry a number: '2 migraine' left early -> '2h early: migraine'."""
+    """Tidy values that carry numbers: '2 migraine' left early -> '2h early: migraine',
+    HR '72' -> '72 bpm', O2 '98' -> '98%', BP '120 80' -> '120/80'."""
+    if category in VITALS:
+        return _normalize_vital(category, value)
     if category != "left_early":
         return value
     m = _HOURS_RE.match(value.strip())

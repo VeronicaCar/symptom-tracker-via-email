@@ -205,7 +205,7 @@ class AddEntryDialog(tk.Toplevel):
         frm.grid()
         self.cat = tk.StringVar(value=LABELS["symptoms"])
         self.val = tk.StringVar()
-        ttk.Combobox(frm, textvariable=self.cat, state="readonly", width=13,
+        ttk.Combobox(frm, textvariable=self.cat, state="readonly", width=15,
                      values=[LABELS[c] for c in CATEGORIES]).grid(row=0, column=0, padx=(0, 6))
         e = ttk.Entry(frm, textvariable=self.val, width=40)
         e.grid(row=0, column=1)
@@ -293,7 +293,7 @@ class App(tk.Tk):
         info = ttk.Frame(self, padding=(12, 4, 12, 0))
         info.pack(fill="x")
         ttk.Label(info, textvariable=self.summary, style="Summary.TLabel").pack(side="left")
-        cb = ttk.Combobox(info, textvariable=self.filter, state="readonly", width=12,
+        cb = ttk.Combobox(info, textvariable=self.filter, state="readonly", width=15,
                           values=["All"] + [LABELS[c] for c in CATEGORIES])
         cb.pack(side="right")
         cb.bind("<<ComboboxSelected>>", lambda _: self.refresh())

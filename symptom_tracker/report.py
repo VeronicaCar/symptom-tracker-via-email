@@ -6,7 +6,7 @@ from collections import Counter
 from html import escape
 
 from . import weather as wx
-from .parser import hours_early
+from .parser import LABELS, VITALS, hours_early
 from .store import servings, water_ounces
 
 MIGRAINE_RE = re.compile(r"migraine|headache|aura", re.I)
@@ -29,7 +29,7 @@ def collect(store, start, end):
     weather = store.weather(start - DAY, end)
     pollen = store.pollen(start, end)
     days = {d: {"date": d, "symptoms": [], "sinus": [], "rescue_meds": [], "food": [],
-                "misc": [], "nap": [], "left_early": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0,
+                "misc": [], "nap": [], "left_early": [], "vitals": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0,
                 "worst": None, "sinus_worst": None, "migraine": False, "dizzy": False,
                 "logged": False}
             for d in _dates(start, end)}
@@ -38,7 +38,9 @@ def collect(store, start, end):
         if d is None:
             continue
         d["logged"] = True
-        if cat == "water":
+        if cat in VITALS:
+            d["vitals"].append((logged_at[11:16], cat, value))
+        elif cat == "water":
             d["water"] += water_ounces(value)
         elif cat in ("electrolytes", "caffeine"):
             d[cat] += servings(value)
@@ -135,7 +137,7 @@ def weekly_summary(cfg, store, end=None):
         f"Electrolytes: {_fmt(s['avg_electrolytes'], 1)}/day   Caffeine: {_fmt(s['avg_caffeine'], 1)}/day",
         f"Naps: {s['nap_days']} days   Left work early: {s['left_early_days']} days"
         + (f" ({s['hours_missed']:g} hours missed)" if s["hours_missed"] else ""),
-    ]
+    ] + vitals_summary(days)
     if s["pressure_drop_days"]:
         lines.append("Big pressure drops: " + ", ".join(
             f"{_short_date(d['date'])} ({d['pressure_change']:+.0f} hPa)" for d in s["pressure_drop_days"]))
@@ -193,6 +195,43 @@ def _notes(d):
     return ([f"left {v}" if hours_early(v) is not None else
              v if v == "left early" else f"left early: {v}" for v in d["left_early"]]
             + [f"nap: {v}" if v != "nap" else v for v in d["nap"]] + d["food"] + d["misc"])
+
+
+_NUM_RE = re.compile(r"\b(\d{2,3})\b")
+_BP_RE = re.compile(r"\b(\d{2,3})\s*/\s*(\d{2,3})\b")
+
+
+def _n(count, word):
+    return f"{count} {word}{'' if count == 1 else 's'}"
+
+
+def vitals_summary(days):
+    """Short phrases about BP, HR and O2 readings, or [] if none."""
+    bp, hr, rises, o2 = [], [], [], []
+    for d in days:
+        for _, cat, value in d["vitals"]:
+            nums = [int(n) for n in _NUM_RE.findall(value)]
+            if cat == "bp":
+                bp += [(int(a), int(b)) for a, b in _BP_RE.findall(value)]
+            elif cat == "hr" and nums:
+                hr.append(nums[0])
+                if len(nums) >= 2:  # lying/sitting then standing
+                    rises.append(nums[1] - nums[0])
+            elif cat == "o2":
+                o2 += [n for n in nums if n <= 100]
+    out = []
+    if bp:
+        out.append(f"BP average {sum(a for a, _ in bp) / len(bp):.0f}/{sum(b for _, b in bp) / len(bp):.0f}"
+                   f" ({_n(len(bp), 'reading')}, lowest {min(bp)[0]}/{min(bp)[1]}, highest {max(bp)[0]}/{max(bp)[1]})")
+    if hr:
+        line = f"Heart rate average {sum(hr) / len(hr):.0f} bpm (range {min(hr)}–{max(hr)})"
+        if rises:
+            line += (f"; lying-to-standing rise averaged +{sum(rises) / len(rises):.0f} bpm, "
+                     f"largest +{max(rises)}, 30+ bpm on {sum(r >= 30 for r in rises)} of {len(rises)} checks")
+        out.append(line)
+    if o2:
+        out.append(f"O2 average {sum(o2) / len(o2):.0f}% (lowest {min(o2)}%, {_n(len(o2), 'reading')})")
+    return out
 
 
 def _pattern(days, flag, label):
@@ -273,11 +312,19 @@ def doctor_report(cfg, store, start, end):
         f"<td class='num'>{_fmt(d['water'] or None, 0)}</td>"
         f"<td class='num'>{_fmt(d['electrolytes'] or None, 0)}</td>"
         f"<td class='num'>{_fmt(d['caffeine'] or None, 0)}</td>"
+        f"<td>{cell([f'{LABELS[c]} {v}' for _, c, v in d['vitals']])}</td>"
         f"<td>{escape(wx.describe(d['weather'], d['pressure_change']))}"
         + (f"<br><span class='dim'>Pollen: {escape(d['pollen'])}</span>" if d['pollen'] else "")
         + f"</td><td>{cell(_notes(d))}</td></tr>"
         for d in reversed(days) if d["logged"])
 
+    vitals_lines = vitals_summary(days)
+    readings = "".join(
+        f"<tr><td class='nowrap'>{_short_date(d['date'])} {t}</td><td>{LABELS[c]}</td><td>{escape(v)}</td></tr>"
+        for d in reversed(days) for t, c, v in d["vitals"])
+    vitals_html = ("<ul>" + "".join(f"<li>{escape(l)}</li>" for l in vitals_lines) + "</ul>"
+                   "<table><tr><th>When</th><th>Reading</th><th>Value</th></tr>" + readings + "</table>"
+                   if vitals_lines or readings else '<p class="dim">None logged</p>')
     top = "".join(f"<li>{escape(name)} <span class='dim'>({n} days)</span></li>"
                   for name, n in _symptom_counts(days))
     med_list = "".join(f"<li>{escape(name)} <span class='dim'>(×{n})</span></li>"
@@ -341,12 +388,15 @@ def doctor_report(cfg, store, start, end):
 <h2>Rescue medications</h2>
 <ul>{med_list or '<li class="dim">None logged</li>'}</ul>
 
+<h2>Vitals</h2>
+{vitals_html}
+
 <h2>Possible patterns</h2>
 <p class="dim">Simple comparisons of days with a migraine, dizziness or severity 5+ against other logged days. Patterns, not conclusions.</p>
 <ul>{''.join(f'<li>{escape(p)}</li>' for p in patterns) or '<li class="dim">Not enough data yet</li>'}</ul>
 
 <h2>Daily log</h2>
 <table><tr><th>Date</th><th>Symptoms</th><th>Sinus</th><th>Rescue meds</th><th>Water (oz)</th>
-<th>Electrolytes</th><th>Caffeine</th><th>Weather</th><th>Food &amp; notes</th></tr>{daily_rows}</table>
+<th>Electrolytes</th><th>Caffeine</th><th>Vitals</th><th>Weather</th><th>Food &amp; notes</th></tr>{daily_rows}</table>
 </body></html>
 """
