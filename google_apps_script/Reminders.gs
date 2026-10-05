@@ -1,0 +1,171 @@
+/**
+ * Symptom Tracker check-in reminders, sent by Gmail itself so they arrive even
+ * when your PC is off. Runs in the tracker Gmail account at script.google.com.
+ *
+ * Setup: see README.md ("Reminders when your PC is off"). In short:
+ *   1. Signed in as the tracker Gmail, create a project at script.google.com.
+ *   2. Paste this file in, fill in CONFIG below, and save.
+ *   3. Run `install` once and allow the permissions it asks for.
+ *   4. In the desktop app, untick Settings → Reminders → "Send reminders from this PC".
+ *
+ * Emailing ROUGH DAY, PAUSE or RESUME to the tracker works here too.
+ */
+
+const CONFIG = {
+  // Where reminders go (probably your work email).
+  REMIND_TO: 'you@example.com',
+  // The addresses you send logs from, so a recent log can skip a reminder and
+  // ROUGH DAY / PAUSE / RESUME emails are noticed.
+  MY_ADDRESSES: ['you@example.com'],
+  TIMES: ['09:00', '12:00', '14:00'],          // 24-hour
+  DAYS: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
+  SKIP_IF_LOGGED_MINUTES: 60,                    // 0 = never skip
+};
+
+const GRACE_MINUTES = 30;   // a reminder can go out up to this long after its time
+const CHECK_EVERY_MINUTES = 10;
+
+const TEMPLATE = 'Symptoms: \nSinus pain: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n' +
+                 'Rescue meds: \nMisc: \n';
+
+/** Run once to start sending reminders. Safe to run again after editing CONFIG. */
+function install() {
+  ScriptApp.getProjectTriggers()
+    .filter(t => t.getHandlerFunction() === 'tick')
+    .forEach(t => ScriptApp.deleteTrigger(t));
+  ScriptApp.newTrigger('tick').timeBased().everyMinutes(CHECK_EVERY_MINUTES).create();
+  Logger.log('Reminders on: ' + CONFIG.TIMES.join(', ') + ' on ' + CONFIG.DAYS.join(', ') +
+             ' (' + Session.getScriptTimeZone() + ')');
+}
+
+/** Run to stop all reminders from this script. */
+function uninstall() {
+  ScriptApp.getProjectTriggers().forEach(t => ScriptApp.deleteTrigger(t));
+  Logger.log('Reminders off.');
+}
+
+/** Run to get one reminder right now, to see what it looks like. */
+function sendTestReminder() {
+  sendReminder_(new Date(), todayMode_(new Date()), true);
+}
+
+/** Called every few minutes by the trigger that `install` creates. */
+function tick() {
+  const now = new Date();
+  const tz = Session.getScriptTimeZone();
+  if (CONFIG.DAYS.indexOf(Utilities.formatDate(now, tz, 'EEE')) < 0) return;
+
+  const mode = todayMode_(now);
+  if (mode === 'pause') return;
+  let slots = CONFIG.TIMES.slice().sort();
+  if (mode === 'rough') slots = slots.slice(-1);   // only the last check-in
+
+  const props = PropertiesService.getScriptProperties();
+  const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  slots.forEach((hhmm, i) => {
+    const at = atTime_(now, hhmm);
+    const key = 'sent ' + today + ' ' + hhmm;
+    const late = (now - at) / 60000;
+    if (late < 0 || late >= GRACE_MINUTES || props.getProperty(key)) return;
+    props.setProperty(key, 'yes');   // mark first so a slow run can't send twice
+    if (CONFIG.SKIP_IF_LOGGED_MINUTES > 0 && loggedSince_(new Date(now - CONFIG.SKIP_IF_LOGGED_MINUTES * 60000))) {
+      Logger.log('Skipped ' + hhmm + ': you logged recently');
+      return;
+    }
+    sendReminder_(at, mode, i === 0);
+  });
+  cleanUpOldMarks_(props, today);
+}
+
+// ---- helpers -----------------------------------------------------------------
+
+/** Today's date at HH:MM in the script's time zone. */
+function atTime_(now, hhmm) {
+  const tz = Session.getScriptTimeZone();
+  const day = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  const offset = Utilities.formatDate(now, tz, 'XXX');   // e.g. -04:00
+  return new Date(day + 'T' + hhmm + ':00' + offset);
+}
+
+function fromMe_() {
+  return '{' + CONFIG.MY_ADDRESSES.map(a => 'from:' + a).join(' ') + '}';
+}
+
+function loggedSince_(since) {
+  const q = fromMe_() + ' after:' + Math.floor(since.getTime() / 1000);
+  return GmailApp.search(q, 0, 1).length > 0;
+}
+
+/** 'normal', 'rough' or 'pause', from today's ROUGH DAY / PAUSE / RESUME emails. */
+function todayMode_(now) {
+  const midnight = atTime_(now, '00:00');
+  const q = fromMe_() + ' after:' + Math.floor(midnight.getTime() / 1000) +
+            ' {subject:rough subject:pause subject:resume subject:"no reminders"}';
+  let latest = null, mode = 'normal';
+  GmailApp.search(q, 0, 50).forEach(thread => {
+    thread.getMessages().forEach(m => {
+      if (m.getDate() < midnight) return;
+      const s = m.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim().toLowerCase();
+      let found = null;
+      if (/^rough\b/.test(s)) found = 'rough';
+      else if (/^(pause|no reminders)\b/.test(s)) found = 'pause';
+      else if (/^resume\b/.test(s)) found = 'normal';
+      if (found && (!latest || m.getDate() > latest)) { latest = m.getDate(); mode = found; }
+    });
+  });
+  return mode;
+}
+
+function cleanUpOldMarks_(props, today) {
+  Object.keys(props.getProperties())
+    .filter(k => k.indexOf('sent ') === 0 && k.slice(5, 15) < today)
+    .forEach(k => props.deleteProperty(k));
+}
+
+function mailto_(to, subject, body) {
+  let url = 'mailto:' + to + '?subject=' + encodeURIComponent(subject);
+  if (body) url += '&body=' + encodeURIComponent(body);
+  return url;
+}
+
+function button_(href, label, primary) {
+  const bg = primary ? '#2f6f5e' : '#e8f0ed', fg = primary ? '#ffffff' : '#1f4a3f';
+  return '<a href="' + href + '" style="display:inline-block;margin:4px 6px 4px 0;' +
+         'padding:10px 14px;border-radius:8px;background:' + bg + ';color:' + fg + ';' +
+         'text-decoration:none;font-weight:600">' + label + '</a>';
+}
+
+function sendReminder_(at, mode, first) {
+  const tracker = Session.getEffectiveUser().getEmail();
+  const label = Utilities.formatDate(at, Session.getScriptTimeZone(), 'h:mm a');
+  const rough = mode === 'rough';
+  const intro = rough ? 'Rough day, so this is the only check-in today. Log just what you can.'
+                      : 'Time to check in.';
+  const quick = [['+ 8oz water', 'WATER 8oz'], ['+ 16oz water', 'WATER 16oz'],
+                 ['Electrolytes', 'ELECTROLYTES 1 serving'], ['Caffeine', 'CAFFEINE '],
+                 ['Migraine', 'MIGRAINE /10'], ['Dizzy', 'DIZZY /10'], ['Sinus pain', 'SINUS /10'],
+                 ['Rescue med', 'RESCUE '], ['Food', 'FOOD '], ['Nap', 'NAP '],
+                 ['Leaving early', 'LEFT EARLY 2h '], ['Note', 'MISC ']];
+  const yesterday = first ? [['Napped yesterday', 'NAP @yesterday'],
+                             ['Left early yesterday', 'LEFT EARLY 2h @yesterday']] : [];
+  const day = rough ? [['Resume normal', 'RESUME']]
+                    : [['Rough day (1 check-in)', 'ROUGH DAY'], ['Pause today', 'PAUSE']];
+  const buttons = list => list.map(([l, s]) => button_(mailto_(tracker, s), l)).join('');
+
+  const html =
+    '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c">' +
+    '<p><b>' + intro + '</b></p>' +
+    '<p>Tap below to open a fill-in-the-blanks log, or just reply to this email.</p>' +
+    '<p>' + button_(mailto_(tracker, 'LOG', TEMPLATE), 'Fill in a full log', true) + '</p>' +
+    '<p style="margin-bottom:2px;color:#555">Or add just one thing:</p><p>' + buttons(quick) + '</p>' +
+    (yesterday.length ? '<p style="margin-bottom:2px;color:#555">Anything from yesterday?</p><p>' +
+                        buttons(yesterday) + '</p>' : '') +
+    '<p style="margin-bottom:2px;color:#555">How\'s today going?</p><p>' + buttons(day) + '</p>' +
+    '<p style="color:#555;font-size:13px">Short codes like <b>w16</b>, <b>m7</b> and <b>le2 migraine</b> ' +
+    'work as the subject. Add @time to backdate, e.g. <b>w16 @2pm</b>.</p></div>';
+  const text = intro + '\n\nReply to this email and fill in whatever applies. ' +
+               'Leave anything blank to skip it.\n\n' + TEMPLATE +
+               '\nSubject ROUGH DAY = only one check-in today, PAUSE = none today, RESUME = back to normal.\n';
+
+  GmailApp.sendEmail(CONFIG.REMIND_TO, 'Symptom check-in (' + label + ')', text, { htmlBody: html });
+}

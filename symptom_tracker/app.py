@@ -89,6 +89,12 @@ class SettingsDialog(tk.Toplevel):
         ttk.Label(when, text=" at ").pack(side="left")
         self.vars["summary_time"] = tk.StringVar(value=cfg["summary_time"])
         ttk.Entry(when, textvariable=self.vars["summary_time"], width=7).pack(side="left")
+        self.pc_reminders = tk.BooleanVar(value=cfg["send_reminders"])
+        ttk.Checkbutton(tabs["Reminders"], text="Send check-in reminders from this PC",
+                        variable=self.pc_reminders).grid(row=8, column=1, sticky="w", pady=(10, 2))
+        ttk.Label(tabs["Reminders"], style="Muted.TLabel",
+                  text="Turn off if the Google script sends them, so you don't get two.").grid(
+            row=9, column=1, sticky="w")
 
         # Tracking
         row("Tracking", 0, "Daily water goal (oz)", "water_goal_oz", str(cfg["water_goal_oz"]), width=8)
@@ -136,6 +142,7 @@ class SettingsDialog(tk.Toplevel):
             reply_to_logs=self.reply_mode.get(),
             skip_if_logged_minutes=max(0, int(v["skip_if_logged_minutes"] or 0)),
             summary_enabled=self.summary_on.get(),
+            send_reminders=self.pc_reminders.get(),
             summary_day=self.summary_day.get(),
             summary_time=dt.datetime.strptime(v["summary_time"], "%H:%M").strftime("%H:%M"),
             water_goal_oz=max(1, int(float(v["water_goal_oz"]))),
@@ -360,7 +367,7 @@ class App(tk.Tk):
     def _status_line(self, lead):
         cfg = self.worker.cfg
         nxt = (next_reminder(cfg, dt.datetime.now(), self.store.day_mode)
-               if config.is_configured(cfg) else None)
+               if config.is_configured(cfg) and cfg["send_reminders"] else None)
         tail = f"  ·  Next reminder {nxt.strftime('%a')} {_fmt(nxt)}" if nxt else ""
         self.status.set(lead + tail)
 

@@ -21,6 +21,7 @@ DEFAULTS = {
     "poll_minutes": 5,
     "reply_to_logs": "errors",      # "always", "errors" (unreadable emails only) or "never"
     "skip_if_logged_minutes": 60,   # skip a reminder if something was logged this recently
+    "send_reminders": True,         # off when the Google Apps Script sends them instead
     "water_goal_oz": 64,
     "summary_enabled": True,        # weekly summary email
     "summary_day": "Sun",

@@ -140,6 +140,32 @@ type the lines.
 If an email can't be understood, the app replies with the format (Settings →
 "Reply to my log emails" can also be set to `always` or `never`).
 
+## Reminders when your PC is off
+
+The desktop app can only send reminders while it's running. To get them even
+when your PC is off, let Gmail send them with the free Google Apps Script in
+`google_apps_script/Reminders.gs`. It runs inside the tracker Gmail account.
+
+1. Signed in as the **tracker Gmail**, go to <https://script.google.com> and
+   click **New project**. Name it "Symptom Tracker reminders".
+2. Replace everything in the editor with the contents of `Reminders.gs`.
+3. Fill in `CONFIG` at the top: where reminders go, the addresses you send logs
+   from, and your times and days. Save.
+4. Under Project Settings (gear icon), check the **time zone** is yours.
+5. Back in the editor, pick `install` in the function menu and click **Run**.
+   Google asks you to allow the script to read and send mail in this account;
+   since you wrote it, it shows an "unverified app" screen, so click
+   **Advanced → Go to Symptom Tracker reminders**.
+6. Optional: run `sendTestReminder` to get one right away.
+7. In the desktop app, untick Settings → Reminders → **Send check-in reminders
+   from this PC** so you don't get two of each.
+
+The script checks every 10 minutes, skips a reminder if you emailed a log in
+the last hour, and honours `ROUGH DAY`, `PAUSE` and `RESUME` emails. The water
+progress bar and rescue-med warning only appear in reminders sent by the PC,
+since your log lives there. Run `uninstall` to stop it. Your logs are still
+recorded when the PC next starts, as before.
+
 ## Weather and pollen
 
 Set a ZIP code or "City, ST" in Settings → Tracking and the app records each

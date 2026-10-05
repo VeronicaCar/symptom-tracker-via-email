@@ -180,7 +180,8 @@ class Worker(threading.Thread):
                 self._safely(self.refresh_weather, job="weather")
 
             mode = self.store.day_mode(now.date())
-            slot = due_reminder(self.cfg, now, self.store.reminder_sent, mode)
+            slot = (due_reminder(self.cfg, now, self.store.reminder_sent, mode)
+                    if self.cfg.get("send_reminders", True) else None)
             if slot and not self._backing_off("reminder", now):
                 skip = self.cfg.get("skip_if_logged_minutes", 0)
                 last = self.store.last_created()
