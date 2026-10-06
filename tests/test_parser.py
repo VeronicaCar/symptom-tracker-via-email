@@ -250,6 +250,13 @@ class HelperTests(unittest.TestCase):
         self.assertEqual(weather.pollen_summary("Pollen alert", text),
                          "Tree pollen: High; Grass: Low; Weed: Moderate")
         self.assertEqual(weather.pollen_summary("Pollen alert", "nothing useful"), "Pollen alert")
+        pollen_com = ("Allergy Alert by Pollen.com\nOctober 5 2026\nToday's Allergy Alert\nTODAY\n4.60\n"
+                      "....................\nLow-Medium\nToday's Top Allergens:\nRagweed\nChenopods\n"
+                      "Grasses\nHow will you feel over\nthe next few days?\nTOMORROW\n4.30\n......\n"
+                      "Low-Medium\nCopyright © 2026 IQVIA Inc. All rights reserved. Pollen.com and "
+                      "Allergy Alert are registered trademarks of IQVIA Inc.\n")
+        self.assertEqual(weather.pollen_summary("Your Personal Allergy Alert", pollen_com),
+                         "4.6 Low-Medium (Ragweed, Chenopods, Grasses); tomorrow 4.3 Low-Medium")
 
 
 class ScheduleTests(unittest.TestCase):

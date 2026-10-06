@@ -120,12 +120,46 @@ _LEVEL_WORDS = re.compile(r"\b(none|absent|very low|low|low-medium|moderate|medi
                           r"medium-high|high|very high|extreme|\d+(\.\d+)?)\b", re.I)
 
 
+_POLLEN_LEVEL = re.compile(r"^(none|absent|very low|low|low-medium|medium|moderate|medium-high|high|"
+                           r"very high|extreme)$", re.I)
+_BOILERPLATE = re.compile(r"copyright|unsubscribe|privacy|terms of use|all rights reserved|sent by",
+                          re.I)
+
+
+def _pollen_com(lines):
+    """Pollen.com Allergy Alert: 'TODAY / 4.60 / Low-Medium / Today's Top Allergens: ...'."""
+    def day(label):
+        if label not in lines:
+            return None
+        i = lines.index(label)
+        num = next((l for l in lines[i + 1:i + 4] if re.fullmatch(r"\d+(\.\d+)?", l)), None)
+        level = next((l for l in lines[i + 1:i + 5] if _POLLEN_LEVEL.match(l)), None)
+        return f"{float(num):g} {level}" if num and level else level
+
+    today = day("TODAY")
+    if not today:
+        return None
+    allergens = []
+    if "Today's Top Allergens:" in lines:
+        for l in lines[lines.index("Today's Top Allergens:") + 1:]:
+            if l.endswith(":") or l.lower().startswith(("how will", "5 day", "the next")):
+                break
+            allergens.append(l)
+    summary = f"{today} ({', '.join(allergens[:4])})" if allergens else today
+    tomorrow = day("TOMORROW")
+    return summary + (f"; tomorrow {tomorrow}" if tomorrow else "")
+
+
 def pollen_summary(subject, text):
-    """Pick the lines of a pollen email that name a pollen type and a level."""
+    """Short summary of a pollen alert email: pollen.com's format first, else
+    lines that name a pollen type and a level."""
+    lines = [" ".join(l.split()) for l in text.splitlines() if l.strip()]
+    special = _pollen_com(lines)
+    if special:
+        return special
     picked = []
-    for line in text.splitlines():
-        line = " ".join(line.split())
-        if not line or line.startswith(">") or len(line) > 160:
+    for line in lines:
+        if line.startswith(">") or len(line) > 160 or _BOILERPLATE.search(line):
             continue
         if _POLLEN_WORDS.search(line) and _LEVEL_WORDS.search(line) and line not in picked:
             picked.append(line)
