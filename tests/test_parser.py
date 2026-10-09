@@ -216,7 +216,7 @@ class BackdateTests(unittest.TestCase):
                          [dt.datetime(2026, 10, 3, 12, 0), dt.datetime(2026, 10, 4, 9, 0)])
         self.assertEqual(p("MISC put on sunglasses"), [("misc", "put on sunglasses")])
         self.assertEqual(times("MISC put on sunglasses"), [None])
-        self.assertEqual(times("m6 on 2/30", sent_at=later), [None])
+        self.assertEqual(times("MIGRAINE 6/10 on 2/30", sent_at=later), [None])  # not a real date
 
     def test_no_space_before_at(self):
         self.assertEqual(p("LOG", "Symptoms: extreme vertigo 8/10@ 12 pm\n"),
