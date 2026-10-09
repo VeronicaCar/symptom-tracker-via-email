@@ -5,6 +5,8 @@ import logging
 import os
 import queue
 import sys
+import threading
+import time
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
@@ -159,14 +161,31 @@ class SettingsDialog(tk.Toplevel):
             pw = "".join(typed.split()) or creds.get_password(cfg["tracker_email"])
             if not pw:
                 raise ValueError("Enter the app password first.")
-            self.config(cursor="watch")
-            self.update()
-            mailer.test_login(cfg, pw)
-            messagebox.showinfo("Settings", "Connected to Gmail. Nothing was sent.", parent=self)
         except Exception as e:
             messagebox.showerror("Settings", f"Couldn't connect:\n{e}", parent=self)
-        finally:
+            return
+        self.config(cursor="watch")
+        result = {}
+
+        def work():  # off the UI thread so the window keeps responding
+            try:
+                mailer.test_login(cfg, pw)
+            except Exception as e:
+                result["error"] = e
+
+        thread = threading.Thread(target=work, daemon=True)
+        thread.start()
+
+        def check():
+            if thread.is_alive():
+                self.after(200, check)
+                return
             self.config(cursor="")
+            if "error" in result:
+                messagebox.showerror("Settings", f"Couldn't connect:\n{result['error']}", parent=self)
+            else:
+                messagebox.showinfo("Settings", "Connected to Gmail. Nothing was sent.", parent=self)
+        check()
 
     def save(self):
         try:
@@ -261,7 +280,7 @@ class ReportDialog(tk.Toplevel):
 class App(tk.Tk):
     def __init__(self, minimized=False):
         super().__init__()
-        self.title("Symptom Tracker")
+        self.title(TITLE)
         self.geometry("920x580")
         self.minsize(760, 400)
         theme.apply(self)
@@ -273,6 +292,10 @@ class App(tk.Tk):
         self.conditions = tk.StringVar()
         self.filter = tk.StringVar(value="All")
         self.mode = tk.StringVar()
+        self._mode = "normal"
+        self._loading = self._reload_again = False
+        self._shown_rows = None
+        self._last_pump = time.monotonic()
         self._build()
         self.refresh()
         self.worker.start()
@@ -282,7 +305,9 @@ class App(tk.Tk):
             self.status.set("Not set up yet. Open Settings to connect your tracker Gmail.")
             self.after(300, self.open_settings)
         elif minimized:
-            self.iconify()
+            # Minimize once the window has been drawn; minimizing a window that was
+            # never shown can leave it blank when it's restored.
+            self.after(200, self.iconify)
 
     def _build(self):
         top = ttk.Frame(self, padding=(12, 10, 12, 4))
@@ -336,16 +361,52 @@ class App(tk.Tk):
                   style="Muted.TLabel").pack(fill="x")
 
     def refresh(self):
+        """Reload the list and summary. The database is read on a background
+        thread so the window never waits on it (e.g. while OneDrive syncs)."""
+        if self._loading:
+            self._reload_again = True
+            return
+        self._loading = True
         cat = LABEL_TO_CAT.get(self.filter.get())
-        self.tree.delete(*self.tree.get_children())
-        for entry_id, when, category, value, source in self.store.recent(category=cat):
-            stamp = dt.datetime.fromisoformat(when).strftime("%a %b %d  %I:%M %p")
-            self.tree.insert("", "end", iid=str(entry_id),
-                             values=(stamp, LABELS.get(category, category), value, source))
+        threading.Thread(target=self._load_view, args=(cat,), daemon=True).start()
+
+    def _load_view(self, cat):
+        try:
+            today = dt.date.today()
+            w = self.store.weather(today - dt.timedelta(days=1), today)
+            view = {
+                "rows": self.store.recent(category=cat),
+                "totals": self.store.day_totals(today),
+                "rescue": self.store.rescue_days(today.year, today.month),
+                "advil": self.store.days_with("advil", today.year, today.month),
+                "weather": wx.describe(w.get(str(today)), wx.pressure_change(
+                    w.get(str(today)), w.get(str(today - dt.timedelta(days=1))))),
+                "pollen": self.store.pollen(today, today).get(str(today)),
+                "mode": self.store.day_mode(),
+            }
+            self.events.put(("view", view))
+        except Exception as e:
+            logging.getLogger(__name__).exception("loading the list failed")
+            self.events.put(("view", None))
+            self.events.put(("error", str(e)))
+
+    def _apply_view(self, view):
+        self._loading = False
+        if self._reload_again:
+            self._reload_again = False
+            self.refresh()
+        if view is None:
+            return
+        rows = view["rows"]
+        if rows != self._shown_rows:  # only rebuild the list when something changed
+            self._shown_rows = rows
+            self.tree.delete(*self.tree.get_children())
+            for entry_id, when, category, value, source in rows:
+                stamp = dt.datetime.fromisoformat(when).strftime("%a %b %d  %I:%M %p")
+                self.tree.insert("", "end", iid=str(entry_id),
+                                 values=(stamp, LABELS.get(category, category), value, source))
         cfg = self.worker.cfg
-        today = dt.date.today()
-        t = self.store.day_totals(today)
-        rescue = self.store.rescue_days(today.year, today.month)
+        t = view["totals"]
         parts = [f"Water {t['water']:.0f}/{cfg['water_goal_oz']} oz"]
         if t["electrolytes"]:
             parts.append(f"Electrolytes {t['electrolytes']:g}")
@@ -353,28 +414,32 @@ class App(tk.Tk):
             parts.append(f"Caffeine {t['caffeine_mg']:.0f} mg")
         elif t["caffeine"]:
             parts.append(f"Caffeine {t['caffeine']:g}")
+        rescue = view["rescue"]
         parts.append(f"Rescue med days this month {rescue}/10" + (" ⚠" if rescue >= 8 else ""))
-        advil = self.store.days_with("advil", today.year, today.month)
-        if advil:
-            parts.append(f"Advil days {advil}" + (" ⚠" if advil >= 12 else ""))
+        if view["advil"]:
+            parts.append(f"Advil days {view['advil']}" + (" ⚠" if view["advil"] >= 12 else ""))
         self.summary.set("   ·   ".join(parts))
-
-        w = self.store.weather(today - dt.timedelta(days=1), today)
-        line = wx.describe(w.get(str(today)), wx.pressure_change(
-            w.get(str(today)), w.get(str(today - dt.timedelta(days=1)))))
-        pollen = self.store.pollen(today, today).get(str(today))
-        bits = ([f"Weather: {line}"] if line else []) + ([f"Pollen: {pollen}"] if pollen else [])
+        bits = (([f"Weather: {view['weather']}"] if view["weather"] else [])
+                + ([f"Pollen: {view['pollen']}"] if view["pollen"] else []))
         self.conditions.set("   ·   ".join(bits))
-        self.mode.set(MODES[self.store.day_mode()])
+        self._mode = view["mode"]
+        self.mode.set(MODES[view["mode"]])
 
     def _status_line(self, lead):
         cfg = self.worker.cfg
-        nxt = (next_reminder(cfg, dt.datetime.now(), self.store.day_mode)
+        today = dt.date.today()
+        nxt = (next_reminder(cfg, dt.datetime.now(),
+                             lambda day: self._mode if day == today else "normal")
                if config.is_configured(cfg) and cfg["send_reminders"] else None)
         tail = f"  ·  Next reminder {nxt.strftime('%a')} {_fmt(nxt)}" if nxt else ""
         self.status.set(lead + tail)
 
     def _pump(self):
+        now_t = time.monotonic()
+        if now_t - self._last_pump > 5:  # the window was stuck; note it for debugging
+            logging.getLogger(__name__).warning("window was unresponsive for %.0fs",
+                                                now_t - self._last_pump - 1)
+        self._last_pump = now_t
         while True:
             try:
                 kind, data = self.events.get_nowait()
@@ -393,6 +458,8 @@ class App(tk.Tk):
                 self._status_line(f"Sent weekly summary at {now}")
             elif kind in ("weather", "mode"):
                 self.refresh()
+            elif kind == "view":
+                self._apply_view(data)
             elif kind == "error":
                 self.status.set(f"Problem: {data}  (details in tracker.log)")
         self.after(1000, self._pump)
@@ -451,7 +518,29 @@ class App(tk.Tk):
         self.destroy()
 
 
+TITLE = "Symptom Tracker"
+
+
+def _already_running():
+    """True if another copy is open; that copy's window is brought to the front."""
+    if sys.platform != "win32":
+        return False
+    import ctypes
+    kernel32, user32 = ctypes.windll.kernel32, ctypes.windll.user32
+    kernel32.CreateMutexW.restype = ctypes.c_void_p
+    _already_running.mutex = kernel32.CreateMutexW(None, False, r"Local\SymptomTrackerApp")
+    if kernel32.GetLastError() != 183:  # ERROR_ALREADY_EXISTS
+        return False
+    hwnd = user32.FindWindowW(None, TITLE)
+    if hwnd:
+        user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+        user32.SetForegroundWindow(hwnd)
+    return True
+
+
 def main():
     logging.basicConfig(filename=config.LOG_PATH, level=logging.INFO,
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    if _already_running():
+        return
     App(minimized="--minimized" in sys.argv).mainloop()

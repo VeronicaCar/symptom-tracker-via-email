@@ -32,6 +32,7 @@ def _spoofed(msg):
 
 
 LOOKBACK_DAYS = 30
+TIMEOUT = 30  # seconds; a stalled connection gives up instead of hanging
 
 
 def _fetch_one(imap, uid, spec):
@@ -60,7 +61,7 @@ def fetch_logs(cfg, password, store):
     pollen_from = [p.lower() for p in cfg.get("pollen_senders", [])]
     codes = cfg.get("short_codes") or parser.DEFAULT_CODES
     since = (dt.date.today() - dt.timedelta(days=LOOKBACK_DAYS)).strftime("%d-%b-%Y")
-    with imaplib.IMAP4_SSL(cfg["imap_host"], ssl_context=ssl.create_default_context()) as imap:
+    with imaplib.IMAP4_SSL(cfg["imap_host"], ssl_context=ssl.create_default_context(), timeout=TIMEOUT) as imap:
         imap.login(cfg["tracker_email"], password)
         imap.select("INBOX")
         _, data = imap.uid("SEARCH", None, "SINCE", since)
@@ -125,17 +126,17 @@ def send(cfg, password, to, subject, text, html=None, in_reply_to=None):
     if html:
         msg.add_alternative(html, subtype="html")
     with smtplib.SMTP_SSL(cfg["smtp_host"], cfg["smtp_port"],
-                          context=ssl.create_default_context()) as smtp:
+                          context=ssl.create_default_context(), timeout=TIMEOUT) as smtp:
         smtp.login(cfg["tracker_email"], password)
         smtp.send_message(msg)
 
 
 def test_login(cfg, password):
     """Log in to IMAP and SMTP without reading or sending anything."""
-    with imaplib.IMAP4_SSL(cfg["imap_host"], ssl_context=ssl.create_default_context()) as imap:
+    with imaplib.IMAP4_SSL(cfg["imap_host"], ssl_context=ssl.create_default_context(), timeout=TIMEOUT) as imap:
         imap.login(cfg["tracker_email"], password)
     with smtplib.SMTP_SSL(cfg["smtp_host"], cfg["smtp_port"],
-                          context=ssl.create_default_context()) as smtp:
+                          context=ssl.create_default_context(), timeout=TIMEOUT) as smtp:
         smtp.login(cfg["tracker_email"], password)
 
 

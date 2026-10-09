@@ -238,9 +238,34 @@ def _normalize_caffeine(value):
 ADVIL_MG = 200  # per regular Advil tablet
 
 
+_DOSE_RE = re.compile(r"(?:\bx\s*(\d+(?:\.\d+)?)\b|\b(\d+(?:\.\d+)?)\s*x\b)", re.I)
+_COUNT_WORDS_RE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(?:tablets?|tabs?|pills?|caplets?|capsules?|doses?)\b",
+                             re.I)
+
+
+def doses(value):
+    """How many doses an entry stands for: 'Dramamine x2', '2x advil', '2 tablets' -> 2.
+    Defaults to 1."""
+    m = _DOSE_RE.search(value)
+    if m:
+        return float(m.group(1) or m.group(2))
+    m = _COUNT_WORDS_RE.match(value)
+    return float(m.group(1)) if m else 1.0
+
+
+def med_name(value):
+    """'Dramamine Less Drowsy x 2' -> 'dramamine less drowsy' (for counting by medication)."""
+    name = _DOSE_RE.sub("", value)
+    name = re.sub(r"\(?\s*\d+(?:\.\d+)?\s*mg\s*\)?", "", name, flags=re.I)
+    name = re.sub(r"^\s*\d+(?:\.\d+)?\s*(?:tablets?|tabs?|pills?|caplets?|capsules?|doses?)?\b", "",
+                  name, flags=re.I)
+    return " ".join(name.lower().split()).strip(" ,.-")
+
+
 def _normalize_advil(value):
-    """'2' -> '2 tablets (400 mg)'. Anything with words or mg is kept as written."""
-    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(?:x|tablets?|tabs?|pills?|caplets?)?\s*", value, re.I)
+    """'2', 'x2' or '2x' -> '2 tablets (400 mg)'. Anything with words or mg is kept as written."""
+    m = (re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(?:x|tablets?|tabs?|pills?|caplets?)?\s*", value, re.I)
+         or re.fullmatch(r"\s*(?:advil\s*)?x\s*(\d+(?:\.\d+)?)\s*", value, re.I))
     if not m:
         return value
     n = float(m.group(1))

@@ -68,6 +68,15 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(p("advil 2 for headache"), [("advil", "2 for headache")])
         self.assertNotIn("advil", [c for c, _ in p("RESCUE sumatriptan")])
 
+    def test_doses(self):
+        self.assertEqual(parser.doses("Dramamine Less Drowsy x 2"), 2)
+        self.assertEqual(parser.doses("2x zofran"), 2)
+        self.assertEqual(parser.doses("2 tablets (400 mg)"), 2)
+        self.assertEqual(parser.doses("sumatriptan 50mg"), 1)
+        self.assertEqual(parser.med_name("Dramamine Less Drowsy x 2"), "dramamine less drowsy")
+        self.assertEqual(p("ADVIL x2"), [("advil", "2 tablets (400 mg)")])
+        self.assertEqual(p("advil 2x"), [("advil", "2 tablets (400 mg)")])
+
     def test_monster_caffeine(self):
         self.assertEqual(p("LOG", "Caffeine: 3/4 monster @ 8am\n"), [("caffeine", "3/4 monster (113 mg)")])
         self.assertEqual(p("MONSTER"), [("caffeine", "monster (150 mg)")])
@@ -326,7 +335,7 @@ class StoreAndReportTests(unittest.TestCase):
             day = dt.datetime.combine(today - dt.timedelta(days=i), dt.time(12))
             entries = [("water", f"{20 + i * 3}oz", day)]
             if i % 3 == 0:
-                entries += [("symptoms", f"migraine {i % 10}/10", day), ("rescue_meds", "sumatriptan", day)]
+                entries += [("symptoms", f"migraine {i % 10}/10", day), ("rescue_meds", "sumatriptan x2" if i == 3 else "sumatriptan", day)]
             if i % 4 == 0:
                 entries.append(("symptoms", "dizzy 4/10", day))
             if i == 1:
@@ -348,7 +357,9 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertIn("sumatriptan", page)
         self.assertIn("left 2h early: migraine", page)
         self.assertIn("2 hours missed", page)
-        self.assertIn("Advil days this week: 1", text)
+        self.assertIn("Advil this week: 2 tablets on 1 day", text)
+        self.assertIn("Rescue meds this week: 4 doses on 3 days", text)
+        self.assertIn("sumatriptan <span class='dim'>(8 doses)", page)
         self.assertIn("2 tablets (400 mg)", page)
         self.assertIn("BP average 110/70", text)
         self.assertIn("30+ bpm on 1 of 1 checks", text)
