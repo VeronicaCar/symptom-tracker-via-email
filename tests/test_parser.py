@@ -389,6 +389,27 @@ class StoreAndReportTests(unittest.TestCase):
                          len({(today - dt.timedelta(days=i)) for i in range(0, 20, 3)
                               if (today - dt.timedelta(days=i)).month == today.month}))
 
+    def test_suggestions(self):
+        from symptom_tracker import suggestions as sg
+        found = sg.severities([("sinus", "3/10"), ("symptoms", "dizzy 4/10, headache 2/10")])
+        self.assertEqual(found, {"Sinus pain": 3, "Migraine": 2, "Dizziness": 4})
+        ideas = sg.ideas(found)
+        self.assertEqual(ideas[0], "Sinus pain 3/10: try an Advil and more water.")
+        self.assertTrue(ideas[1].startswith("Migraine 2/10: try mint gum, your menthol head stick,"))
+        self.assertNotIn("Nurtec", ideas[1])
+        self.assertIn("Dramamine Less-Drowsy", ideas[2])
+        self.assertIn("Nurtec", sg.ideas({"Migraine": 3.5})[0])
+        self.assertEqual(sg.ideas({"Sinus pain": 1.5, "Migraine": 1, "Dizziness": 1.9}), [])
+        # the latest reading of the day wins
+        self.assertEqual(sg.severities([("symptoms", "migraine 5/10"), ("symptoms", "migraine 1/10")]),
+                         {"Migraine": 1})
+        self.store.add_entries([("symptoms", "migraine 4/10"), ("sinus", "2/10")])
+        cfg = dict(config.DEFAULTS, tracker_email="t@gmail.com")
+        _, text, _ = mailer.reminder(cfg, dt.datetime.now(), self.store)
+        self.assertIn("Might help: Migraine 4/10", text)
+        self.assertIn("a2 = advil 2 tablets (400 mg)", text)
+        self.assertIn("Might help: Sinus pain 2/10", text)
+
     def test_reminder_email(self):
         cfg = dict(config.DEFAULTS, tracker_email="t@gmail.com")
         self.store.add_entries([("water", "16oz")])

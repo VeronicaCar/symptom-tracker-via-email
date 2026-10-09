@@ -174,6 +174,23 @@ warnings, worked out from the log emails in the tracker inbox (a lighter version
 of the desktop app's reading; entries backdated to another day aren't counted). Run `uninstall` to stop it. Your logs are still
 recorded when the PC next starts, as before.
 
+## Suggestions
+
+When you log a symptom at these levels, you get ideas for what might help:
+
+| Symptom    | At 2/10 or more                                                    | At 3.5/10 or more         |
+|------------|--------------------------------------------------------------------|---------------------------|
+| Sinus pain | an Advil and more water                                             |                           |
+| Migraine   | mint gum, menthol head stick, migraine glasses, a walk loop, electrolytes | a Nurtec           |
+| Dizziness  | the same as migraine                                                | a Dramamine Less-Drowsy   |
+
+The Gmail script replies to your log email with them within about 10 minutes
+(turn off with `SUGGEST_ON_LOG: false`), and every reminder lists them based on
+the latest levels you logged that day. A note is added if rescue meds or Advil
+have been used often this month. Edit the lists in `SUGGESTIONS` at the top of
+`Reminders.gs` (and in `symptom_tracker/suggestions.py` for reminders sent by
+the PC).
+
 ## Weather and pollen
 
 Set a ZIP code or "City, ST" in Settings → Tracking and the app records each

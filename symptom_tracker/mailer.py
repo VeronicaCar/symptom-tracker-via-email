@@ -11,7 +11,7 @@ from email import policy
 from email.message import EmailMessage
 from email.utils import parseaddr, parsedate_to_datetime
 
-from . import parser
+from . import parser, suggestions
 from . import weather as wx
 
 TEMPLATE = ("Symptoms: \nSinus pain: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n"
@@ -167,8 +167,10 @@ def code_examples(codes):
             if parser.hours_early(value) is not None:
                 value = f"left {value}"
         else:
-            n = "16" if "oz" in tmpl else "30" if "min" in tmpl else "1" if "{n} " in tmpl else "6"
-            code, value = f"{code}{n}", tmpl.replace("{n}", n)
+            cat = parser.category_for(cat_word)
+            n = ("16" if "oz" in tmpl else "30" if "min" in tmpl else "2" if cat == "advil"
+                 else "1" if "{n} " in tmpl else "6")
+            code, value = f"{code}{n}", parser.normalize(cat, tmpl.replace("{n}", n))
         if label != "symptoms" and label.split()[0] not in value.lower():
             value = f"{label} {value}"
         out.append(f"{code} = {value}")
@@ -203,6 +205,7 @@ def reminder(cfg, when, store=None, rough=False, first=False):
         if n >= 8:
             notes.append(f"Heads up: rescue meds on {n} days this month. "
                          "10+ days a month can cause rebound headaches.")
+        notes += [f"Might help: {idea}" for idea in suggestions.for_today(store, when.date())]
     intro = ("Rough day, so this is the only check-in today. Log just what you can."
              if rough else "Time to check in.")
     examples = code_examples(codes)
