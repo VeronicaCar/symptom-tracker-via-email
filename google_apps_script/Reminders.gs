@@ -20,6 +20,7 @@ const CONFIG = {
   TIMES: ['09:00', '12:00', '14:00'],          // 24-hour
   DAYS: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
   SKIP_IF_LOGGED_MINUTES: 60,                    // 0 = never skip
+  WATER_GOAL_OZ: 64,
 };
 
 const GRACE_MINUTES = 30;   // a reminder can go out up to this long after its time
@@ -135,6 +136,91 @@ function button_(href, label, primary) {
          'text-decoration:none;font-weight:600">' + label + '</a>';
 }
 
+// ---- totals from your log emails ------------------------------------------------
+// A light version of the desktop app's reading, so reminders can show water and
+// medication counts while the PC is off. Entries backdated to another day are skipped.
+
+const OZ_PER_ = { oz: 1, ounce: 1, ounces: 1, cup: 8, cups: 8, ml: 1 / 29.57, l: 33.81,
+                  liter: 33.81, liters: 33.81, litre: 33.81, litres: 33.81 };
+const RESCUE_RE_ = /^(rescue( meds?| medication)?|meds?|medication|triptan|sumatriptan|rizatriptan|ubrelvy|nurtec|tylenol|excedrin|meclizine|zofran|dramamine|bonine|ondansetron|r)\b/i;
+const ADVIL_RE_ = /^(advil|ibuprofen|motrin|a\d)/i;
+
+/** Your own lines from an email: the subject, then the body down to any quoted reply. */
+function myLines_(message) {
+  const lines = [message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '')];
+  for (const line of message.getPlainBody().split(/\r?\n/)) {
+    if (/^\s*>/.test(line) || /^On .+wrote:\s*$/.test(line.trim()) || line.trim() === '--') break;
+    lines.push(line);
+  }
+  return lines.map(l => l.trim()).filter(l => l && !/\b(yesterday|last night)\b|\bon\s+\d{1,2}\/\d{1,2}|@\s*\d{1,2}\/\d{1,2}/i.test(l));
+}
+
+function waterOz_(line) {
+  let total = 0;
+  for (const m of line.matchAll(/\bw(\d+(?:\.\d+)?)\b/gi)) total += Number(m[1]);   // short code w16
+  const water = line.match(/^(water|h2o|drink|drank|fluids?)\s*:?\s*(.*)$/i);
+  if (water) {
+    for (const m of water[2].matchAll(/(\d+(?:\.\d+)?)\s*(oz|ounces?|cups?|ml|l|liters?|litres?)\b/gi)) {
+      total += Number(m[1]) * OZ_PER_[m[2].toLowerCase()];
+    }
+  }
+  return total;
+}
+
+/** Messages you sent since a given time, oldest first. */
+function myMessagesSince_(since) {
+  const q = fromMe_() + ' after:' + Math.floor(since.getTime() / 1000);
+  const mine = CONFIG.MY_ADDRESSES.map(a => a.toLowerCase());
+  const out = [];
+  GmailApp.search(q, 0, 200).forEach(thread => thread.getMessages().forEach(m => {
+    const from = (m.getFrom().match(/<([^>]+)>/) || [null, m.getFrom()])[1].toLowerCase();
+    if (m.getDate() >= since && mine.indexOf(from) >= 0) out.push(m);
+  }));
+  return out.sort((a, b) => a.getDate() - b.getDate());
+}
+
+/** {waterOz, rescueDays, advilDays} for today and this month. */
+function totals_(now) {
+  const tz = Session.getScriptTimeZone();
+  const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+  const monthStart = atTime_(new Date(Utilities.formatDate(now, tz, 'yyyy-MM-01') + 'T12:00:00Z'), '00:00');
+  let waterOz = 0;
+  const rescue = new Set(), advil = new Set();
+  myMessagesSince_(monthStart).forEach(m => {
+    const day = Utilities.formatDate(m.getDate(), tz, 'yyyy-MM-dd');
+    myLines_(m).forEach(line => {
+      if (day === today) waterOz += waterOz_(line);
+      const body = line.replace(/^[a-z ]+:\s*$/i, '');   // skip blank "Rescue meds:" template lines
+      if (!body) return;
+      if (RESCUE_RE_.test(body)) rescue.add(day);
+      if (ADVIL_RE_.test(body)) advil.add(day);
+    });
+  });
+  return { waterOz: Math.round(waterOz), rescueDays: rescue.size, advilDays: advil.size };
+}
+
+/** Lines about water and medication to put at the top of a reminder. */
+function notes_(now) {
+  const t = totals_(now);
+  const goal = CONFIG.WATER_GOAL_OZ;
+  const hour = Number(Utilities.formatDate(now, Session.getScriptTimeZone(), 'H')) +
+               Number(Utilities.formatDate(now, Session.getScriptTimeZone(), 'm')) / 60;
+  const pace = goal * Math.min(Math.max((hour - 8) / 12, 0), 1);   // goal spread over 8am-8pm
+  let water = 'Water so far today: ' + t.waterOz + ' of ' + goal + ' oz.';
+  if (t.waterOz >= goal) water += ' Goal reached!';
+  else if (t.waterOz < pace * 0.75) water += ' A little behind, a glass now would help.';
+  const notes = [water];
+  if (t.rescueDays >= 8) {
+    notes.push('Heads up: rescue meds on ' + t.rescueDays + ' days this month. ' +
+               '10+ days a month can cause rebound headaches.');
+  }
+  if (t.advilDays >= 12) {
+    notes.push('Heads up: Advil on ' + t.advilDays + ' days this month. ' +
+               '15+ days a month of pain relievers can cause rebound headaches.');
+  }
+  return { notes: notes, progress: goal ? Math.min(t.waterOz / goal, 1) : 0 };
+}
+
 function sendReminder_(at, mode, first) {
   const tracker = Session.getEffectiveUser().getEmail();
   const label = Utilities.formatDate(at, Session.getScriptTimeZone(), 'h:mm a');
@@ -151,10 +237,21 @@ function sendReminder_(at, mode, first) {
   const day = rough ? [['Resume normal', 'RESUME']]
                     : [['Rough day (1 check-in)', 'ROUGH DAY'], ['Pause today', 'PAUSE']];
   const buttons = list => list.map(([l, s]) => button_(mailto_(tracker, s), l)).join('');
+  let info = { notes: [], progress: null };
+  try {
+    info = notes_(new Date());
+  } catch (e) {  // never let the totals stop a reminder
+    Logger.log('Totals failed: ' + e);
+  }
+  const bar = info.progress === null ? '' :
+    '<div style="background:#e3ecef;border-radius:6px;height:10px;width:260px;margin:4px 0 10px">' +
+    '<div style="background:#2e86c1;border-radius:6px;height:10px;width:' +
+    Math.round(info.progress * 100) + '%"></div></div>';
 
   const html =
     '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c">' +
-    '<p><b>' + intro + '</b></p>' +
+    '<p style="margin-bottom:6px"><b>' + intro + '</b></p>' +
+    info.notes.map(n => '<p style="margin:2px 0">' + n + '</p>').join('') + bar +
     '<p>Tap below to open a fill-in-the-blanks log, or just reply to this email.</p>' +
     '<p>' + button_(mailto_(tracker, 'LOG', TEMPLATE), 'Fill in a full log', true) + '</p>' +
     '<p style="margin-bottom:2px;color:#555">Or add just one thing:</p><p>' + buttons(quick) + '</p>' +
@@ -163,7 +260,7 @@ function sendReminder_(at, mode, first) {
     '<p style="margin-bottom:2px;color:#555">How\'s today going?</p><p>' + buttons(day) + '</p>' +
     '<p style="color:#555;font-size:13px">Short codes like <b>w16</b>, <b>m7</b> and <b>le2 migraine</b> ' +
     'work as the subject. Add @time to backdate, e.g. <b>w16 @2pm</b>.</p></div>';
-  const text = intro + '\n\nReply to this email and fill in whatever applies. ' +
+  const text = intro + '\n' + info.notes.join('\n') + '\n\nReply to this email and fill in whatever applies. ' +
                'Leave anything blank to skip it.\n\n' + TEMPLATE +
                '\nSubject ROUGH DAY = only one check-in today, PAUSE = none today, RESUME = back to normal.\n';
 

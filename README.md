@@ -168,9 +168,10 @@ when your PC is off, let Gmail send them with the free Google Apps Script in
    from this PC** so you don't get two of each.
 
 The script checks every 10 minutes, skips a reminder if you emailed a log in
-the last hour, and honours `ROUGH DAY`, `PAUSE` and `RESUME` emails. The water
-progress bar and rescue-med warning only appear in reminders sent by the PC,
-since your log lives there. Run `uninstall` to stop it. Your logs are still
+the last hour, and honours `ROUGH DAY`, `PAUSE` and `RESUME` emails. It also
+shows today's water against `WATER_GOAL_OZ` and the rescue-med and Advil
+warnings, worked out from the log emails in the tracker inbox (a lighter version
+of the desktop app's reading; entries backdated to another day aren't counted). Run `uninstall` to stop it. Your logs are still
 recorded when the PC next starts, as before.
 
 ## Weather and pollen
