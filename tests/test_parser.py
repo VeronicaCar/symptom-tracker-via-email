@@ -198,6 +198,26 @@ class BackdateTests(unittest.TestCase):
         self.assertEqual(times("LOG @noon", "Water: 8oz\nFood: toast @11am\n"),
                          [at, NOW.replace(hour=11)])
 
+    def test_calendar_dates(self):
+        self.assertEqual(times("WATER 16oz on 10/2", sent_at=dt.datetime(2026, 10, 8, 20, 30)),
+                         [dt.datetime(2026, 10, 2, 12, 0)])
+        # a date well after the email was sent means last year
+        self.assertEqual(times("WATER 16oz on 10/2"), [dt.datetime(2025, 10, 2, 12, 0)])
+        self.assertEqual(p("WATER 16oz on 10/2"), [("water", "16oz")])
+        for s in ("WATER 16oz on 10/2 @ 2pm", "WATER 16oz on 10/2 at 2pm", "WATER 16oz on 10/2 2pm",
+                  "WATER 16oz @10/2 2pm", "WATER 16oz @ 2pm on 10/2", "WATER 16oz on oct 2 @ 2pm",
+                  "WATER 16oz @oct2 2pm"):
+            self.assertEqual(times(s, sent_at=dt.datetime(2026, 10, 8, 20, 30)),
+                             [dt.datetime(2026, 10, 2, 14, 0)], s)
+        later = dt.datetime(2026, 10, 8, 20, 30)
+        self.assertEqual(times("m6 on 12/25", sent_at=later), [dt.datetime(2025, 12, 25, 12, 0)])
+        self.assertEqual(times("m6 on 10/2/2026 @ 9am", sent_at=later), [dt.datetime(2026, 10, 2, 9, 0)])
+        self.assertEqual(times("LOG on 10/3", "Water: 8oz\nFood: toast @ 9am on 10/4\n", sent_at=later),
+                         [dt.datetime(2026, 10, 3, 12, 0), dt.datetime(2026, 10, 4, 9, 0)])
+        self.assertEqual(p("MISC put on sunglasses"), [("misc", "put on sunglasses")])
+        self.assertEqual(times("MISC put on sunglasses"), [None])
+        self.assertEqual(times("m6 on 2/30", sent_at=later), [None])
+
     def test_no_space_before_at(self):
         self.assertEqual(p("LOG", "Symptoms: extreme vertigo 8/10@ 12 pm\n"),
                          [("symptoms", "extreme vertigo 8/10")])

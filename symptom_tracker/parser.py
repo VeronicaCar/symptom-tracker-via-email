@@ -332,24 +332,77 @@ def _clock(text, day_given):
     return [(h, mi), (h + 12, mi)]
 
 
+_MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"]
+_DATE = (r"\d{1,2}/\d{1,2}(?:/\d{2,4})?"
+         r"|(?:jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s*\d{1,2}(?:st|nd|rd|th)?"
+         r"|(?:mon|tues?|wed|thu|thur|thurs|fri|sat|sun)[a-z]*|yesterday|today")
+_TIME = r"\d{1,2}(?::\d{2})?\s*(?:am|pm|a|p)?|noon|midnight|morning|afternoon|evening|night"
+# "WATER 16oz on 10/2", "... on oct 2 2pm", "... on 10/2 at 2pm" (no @ needed after "on")
+_ON_DATE_RE = re.compile(rf"(?:^|\s)on\s+((?:{_DATE})(?:\s+(?:at\s+)?(?:{_TIME}))?)\s*$", re.I)
+
+
+def _calendar_date(words, ref):
+    """Pull a date like '10/2', '10/2/26', 'oct 2' off the front of words.
+    Returns (date, remaining words) or (None, words). A date more than a day
+    in the future is taken to mean last year."""
+    if not words:
+        return None, words
+    m = re.fullmatch(r"(\d{1,2})/(\d{1,2})(?:/(\d{2,4}))?", words[0])
+    rest = words[1:]
+    if m:
+        month, day, year = int(m.group(1)), int(m.group(2)), m.group(3)
+    else:
+        month = next((i + 1 for i, name in enumerate(_MONTHS) if words[0].rstrip(".").startswith(name)), None)
+        if month is None or not re.fullmatch(r"[a-z]+\.?", words[0]):
+            return None, words
+        # "oct 2" or "oct2"
+        num = re.fullmatch(r"[a-z]+\.?(\d{1,2})(?:st|nd|rd|th)?", words[0])
+        if num:
+            day = int(num.group(1))
+        elif rest and re.fullmatch(r"\d{1,2}(?:st|nd|rd|th)?", rest[0]):
+            day, rest = int(re.match(r"\d+", rest[0]).group(0)), rest[1:]
+        else:
+            return None, words
+        year = None
+    try:
+        if year:
+            year = int(year) + (2000 if len(year) == 2 else 0)
+            return dt.date(year, month, day), rest
+        when = dt.date(ref.year, month, day)
+        if when > ref.date() + dt.timedelta(days=1):
+            when = dt.date(ref.year - 1, month, day)
+        return when, rest
+    except ValueError:  # 2/30 and the like
+        return None, words
+
+
 def parse_when(text, ref):
-    """Parse '2pm', 'yesterday 4pm', 'mon noon', ... relative to ref. None if unclear."""
-    words = text.lower().replace(",", " ").split()
+    """Parse '2pm', 'yesterday 4pm', 'mon noon', '10/2', '10/2 2pm', 'oct 2 at 2pm',
+    '2pm on 10/2' ... relative to ref. None if unclear."""
+    text = re.sub(r"(?i)\b(oct|nov|dec|jan|feb|mar|apr|may|jun|jul|aug|sept?)\.?(\d)", r"\1 \2", text)
+    words = [w for w in text.lower().replace(",", " ").split() if w not in ("on", "at")]
     if not words:
         return None
     day = None
-    if words[0] in ("yesterday", "yday", "yest"):
-        day, words = ref.date() - dt.timedelta(days=1), words[1:]
-    elif words[0] == "today":
-        day, words = ref.date(), words[1:]
-    elif words[0] == "last" and len(words) > 1 and words[1] == "night":
-        return dt.datetime.combine(ref.date() - dt.timedelta(days=1), dt.time(22, 0))
-    else:
-        for i, name in enumerate(_WEEKDAYS):
-            if words[0] == name or (len(words[0]) >= 3 and name.startswith(words[0])):
-                back = (ref.weekday() - i) % 7
-                day, words = ref.date() - dt.timedelta(days=back), words[1:]
-                break
+    # The date can come before or after the time: "10/2 2pm" or "2pm 10/2".
+    for i in range(len(words)):
+        found, rest = _calendar_date(words[i:], ref)
+        if found:
+            day, words = found, words[:i] + rest
+            break
+    if day is None and words:
+        if words[0] in ("yesterday", "yday", "yest"):
+            day, words = ref.date() - dt.timedelta(days=1), words[1:]
+        elif words[0] == "today":
+            day, words = ref.date(), words[1:]
+        elif words[0] == "last" and len(words) > 1 and words[1] == "night":
+            return dt.datetime.combine(ref.date() - dt.timedelta(days=1), dt.time(22, 0))
+        else:
+            for i, name in enumerate(_WEEKDAYS):
+                if words[0] == name or (len(words[0]) >= 3 and name.startswith(words[0])):
+                    back = (ref.weekday() - i) % 7
+                    day, words = ref.date() - dt.timedelta(days=back), words[1:]
+                    break
     if words:
         options = _clock("".join(words), day is not None)
         if not options:
@@ -372,13 +425,22 @@ def parse_when(text, ref):
 
 
 def split_time(text, ref):
-    """'16oz @2pm' -> ('16oz', datetime). The space before @ is optional
-    ('8/10@ 12 pm'). Unparseable @ text, like an email address, is left alone."""
+    """'16oz @2pm' -> ('16oz', datetime). Also '16oz on 10/2', '16oz on 10/2 @ 2pm',
+    '16oz @10/2 2pm'. The space before @ is optional ('8/10@ 12 pm'). Unparseable
+    @ text, like an email address, is left alone."""
+    if ref is None:
+        return text, None
+    base, at_text = text, None
     pos = text.rfind("@")
-    if pos >= 0 and ref is not None:
-        when = parse_when(text[pos + 1:], ref)
+    if pos >= 0 and parse_when(text[pos + 1:], ref):
+        base, at_text = text[:pos].strip(), text[pos + 1:]
+    m = _ON_DATE_RE.search(base)
+    if m:
+        when = parse_when(m.group(1) + (" " + at_text if at_text else ""), ref)
         if when:
-            return text[:pos].strip(), when
+            return base[:m.start()].strip(), when
+    if at_text is not None:
+        return base, parse_when(at_text, ref)
     return text, None
 
 

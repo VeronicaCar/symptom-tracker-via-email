@@ -116,6 +116,11 @@ Combine them: `w16 m7` logs both. Change or add codes in Settings → Tracking.
 `LOG @noon` backdates a whole email. A time later than now means yesterday.
 The space before `@` is optional (`8/10@ 12 pm` works).
 
+For another day, add a date: `WATER 16oz on 10/2`, `m6 on 10/2 @ 2pm`,
+`ADVIL 2 @oct 2 11am` or `d4 on mon @ 1pm`. With no time, noon is used. A date
+later than today means last year. This adds a new entry for that day; it
+doesn't change entries already logged.
+
 Water in oz, cups, ml or liters is added up for the daily total.
 
 Monsters are converted to mg of caffeine at 150 mg a can (Monster Ultra
