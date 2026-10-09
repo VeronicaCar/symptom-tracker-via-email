@@ -144,7 +144,7 @@ function sendReminder_(at, mode, first) {
   const quick = [['+ 8oz water', 'WATER 8oz'], ['+ 16oz water', 'WATER 16oz'],
                  ['Electrolytes', 'ELECTROLYTES 1 serving'], ['Caffeine', 'CAFFEINE '],
                  ['Migraine', 'MIGRAINE /10'], ['Dizzy', 'DIZZY /10'], ['Sinus pain', 'SINUS /10'],
-                 ['Rescue med', 'RESCUE '], ['Food', 'FOOD '], ['Nap', 'NAP '],
+                 ['Rescue med', 'RESCUE '], ['Advil', 'ADVIL 2'], ['Food', 'FOOD '], ['Nap', 'NAP '],
                  ['Leaving early', 'LEFT EARLY 2h '], ['Note', 'MISC ']];
   const yesterday = first ? [['Napped yesterday', 'NAP @yesterday'],
                              ['Left early yesterday', 'LEFT EARLY 2h @yesterday']] : [];

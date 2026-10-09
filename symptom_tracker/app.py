@@ -354,6 +354,9 @@ class App(tk.Tk):
         elif t["caffeine"]:
             parts.append(f"Caffeine {t['caffeine']:g}")
         parts.append(f"Rescue med days this month {rescue}/10" + (" ⚠" if rescue >= 8 else ""))
+        advil = self.store.days_with("advil", today.year, today.month)
+        if advil:
+            parts.append(f"Advil days {advil}" + (" ⚠" if advil >= 12 else ""))
         self.summary.set("   ·   ".join(parts))
 
         w = self.store.weather(today - dt.timedelta(days=1), today)

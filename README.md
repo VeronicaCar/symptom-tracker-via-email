@@ -67,6 +67,7 @@ BP, HR or O2 (`BP 113/75 @ 1 pm`).
 | `2 monsters`               | Caffeine: 2 monsters (300 mg)          |
 | `ELECTROLYTES 1 serving`   | Electrolytes: 1 serving                |
 | `RESCUE sumatriptan 50mg`  | Rescue meds: sumatriptan 50mg          |
+| `ADVIL 2`                  | Advil: 2 tablets (400 mg)              |
 | `LUNCH salad`              | Food: lunch: salad                     |
 | `NAP 30 min`               | Nap: 30 min                            |
 | `LEFT EARLY 2h migraine`   | Left early: 2h early: migraine         |
@@ -80,7 +81,7 @@ BP, HR or O2 (`BP 113/75 @ 1 pm`).
 
 Other words that work: `symptom`, `headache`, `vertigo`, `nausea`, `fatigue`,
 `congestion`, `allergies`, `salt`, `lmnt`, `tea`, `soda`, `meds`, `triptan`,
-`advil`, `tylenol`, `excedrin`, `meclizine`, `breakfast`, `dinner`, `snack`,
+`tylenol`, `excedrin`, `meclizine`, `ibuprofen` and `motrin` (logged as Advil), `breakfast`, `dinner`, `snack`,
 `napped`, `went home early`, `left work early`, `note`. `NAP` and `LEFT EARLY`
 work on their own too. For leaving early, the first number is how many hours
 early (`LEFT EARLY 2` = 2 hours); the weekly summary and doctor report add up
@@ -104,6 +105,7 @@ body) can be just codes:
 | `n4`        | Nausea 4/10                   |
 | `s4`        | Sinus pain 4/10               |
 | `r sumatriptan` | Rescue med: sumatriptan   |
+| `a2`        | Advil 2 tablets (400 mg)      |
 | `z30`       | Nap 30 min                    |
 | `le2 migraine` | Left 2h early: migraine    |
 

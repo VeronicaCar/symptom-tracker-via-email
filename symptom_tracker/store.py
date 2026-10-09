@@ -168,13 +168,17 @@ class Store:
 
     def rescue_days(self, year, month):
         """Distinct days this calendar month with a rescue med logged."""
+        return self.days_with("rescue_meds", year, month)
+
+    def days_with(self, category, year, month):
+        """Distinct days in a calendar month with an entry in this category."""
         start = dt.date(year, month, 1)
         end = dt.date(year + month // 12, month % 12 + 1, 1)
         with self._conn() as c:
             row = c.execute(
                 "SELECT COUNT(DISTINCT substr(logged_at, 1, 10)) FROM entries"
-                " WHERE category = 'rescue_meds' AND logged_at >= ? AND logged_at < ?",
-                (str(start), str(end))).fetchone()
+                " WHERE category = ? AND logged_at >= ? AND logged_at < ?",
+                (category, str(start), str(end))).fetchone()
         return row[0]
 
     def export_csv(self, path):

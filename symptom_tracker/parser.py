@@ -22,14 +22,14 @@ import re
 from typing import NamedTuple, Optional
 
 CATEGORIES = ("symptoms", "sinus", "water", "electrolytes", "caffeine", "food",
-              "rescue_meds", "nap", "left_early", "bp", "hr", "o2", "misc")
+              "rescue_meds", "advil", "nap", "left_early", "bp", "hr", "o2", "misc")
 LABELS = {"symptoms": "Symptoms", "sinus": "Sinus pain", "water": "Water",
           "electrolytes": "Electrolytes", "caffeine": "Caffeine", "food": "Food",
-          "rescue_meds": "Rescue meds", "nap": "Nap", "left_early": "Left early",
+          "rescue_meds": "Rescue meds", "advil": "Advil", "nap": "Nap", "left_early": "Left early",
           "bp": "Blood pressure", "hr": "Heart rate", "o2": "O2", "misc": "Misc"}
 VITALS = ("bp", "hr", "o2")
 SEVERITY_CATEGORIES = {"symptoms", "sinus"}
-NO_VALUE_NEEDED = {"nap", "left_early", "rescue_meds"}  # "LEFT EARLY" alone is enough
+NO_VALUE_NEEDED = {"nap", "left_early", "rescue_meds", "advil"}  # "LEFT EARLY" alone is enough
 
 # Generic names just pick the category; every other alias is kept in the
 # logged value ("MIGRAINE 6/10" logs "migraine 6/10" under Symptoms).
@@ -42,6 +42,7 @@ _GENERIC = {
     "food": ("food", "ate", "eat", "meal"),
     "rescue_meds": ("rescue", "rescue med", "rescue meds", "rescue medication", "med",
                     "meds", "medication"),
+    "advil": ("advil", "advils"),
     "nap": ("nap", "naps", "napped", "napping"),
     "left_early": ("left early", "leaving early", "leave early", "left work early",
                    "went home early", "home early", "early"),
@@ -60,9 +61,10 @@ _LABELLED = {
     "caffeine": ("coffee", "tea", "soda", "espresso", "energy drink", "latte", "monster",
                  "monsters"),
     "food": ("breakfast", "lunch", "dinner", "snack"),
-    "rescue_meds": ("triptan", "sumatriptan", "rizatriptan", "ubrelvy", "nurtec", "ibuprofen",
-                    "advil", "tylenol", "excedrin", "meclizine", "zofran", "dramamine",
+    "rescue_meds": ("triptan", "sumatriptan", "rizatriptan", "ubrelvy", "nurtec",
+                    "tylenol", "excedrin", "meclizine", "zofran", "dramamine",
                     "bonine", "ondansetron"),
+    "advil": ("ibuprofen", "motrin"),
     "nap": (),
     "left_early": (),
     "bp": (),
@@ -87,6 +89,7 @@ DEFAULT_CODES = {
     "r": "rescue meds: {text}",
     "z": "nap: {n} min",
     "le": "left early: {text}",
+    "a": "advil: {n}",
 }
 
 COMMANDS = [("rough day", "rough"), ("rough", "rough"), ("pause today", "pause"),
@@ -232,12 +235,27 @@ def _normalize_caffeine(value):
     return f"{value} ({int(mg + 0.5)} mg)" if mg else value
 
 
+ADVIL_MG = 200  # per regular Advil tablet
+
+
+def _normalize_advil(value):
+    """'2' -> '2 tablets (400 mg)'. Anything with words or mg is kept as written."""
+    m = re.fullmatch(r"\s*(\d+(?:\.\d+)?)\s*(?:x|tablets?|tabs?|pills?|caplets?)?\s*", value, re.I)
+    if not m:
+        return value
+    n = float(m.group(1))
+    count = f"{n:g} tablet{'' if n == 1 else 's'}"
+    return f"{count} ({n * ADVIL_MG:g} mg)"
+
+
 def normalize(category, value):
     """Tidy values that carry numbers: '2 migraine' left early -> '2h early: migraine',
     HR '72' -> '72 bpm', O2 '98' -> '98%', BP '120 80' -> '120/80',
     caffeine '3/4 monster' -> '3/4 monster (113 mg)'."""
     if category in VITALS:
         return _normalize_vital(category, value)
+    if category == "advil":
+        return _normalize_advil(value)
     if category == "caffeine":
         return _normalize_caffeine(value)
     if category != "left_early":

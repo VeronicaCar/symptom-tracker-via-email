@@ -28,7 +28,7 @@ def collect(store, start, end):
     """Per-day aggregates for start..end (dates, inclusive)."""
     weather = store.weather(start - DAY, end)
     pollen = store.pollen(start, end)
-    days = {d: {"date": d, "symptoms": [], "sinus": [], "rescue_meds": [], "food": [],
+    days = {d: {"date": d, "symptoms": [], "sinus": [], "rescue_meds": [], "advil": [], "food": [],
                 "misc": [], "nap": [], "left_early": [], "vitals": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0, "caffeine_mg": 0.0,
                 "worst": None, "sinus_worst": None, "migraine": False, "dizzy": False,
                 "logged": False}
@@ -78,6 +78,7 @@ def stats(days, water_goal):
         "dizzy_days": sum(d["dizzy"] for d in days),
         "sinus_days": sum(bool(d["sinus"]) for d in days),
         "rescue_days": sum(bool(d["rescue_meds"]) for d in days),
+        "advil_days": sum(bool(d["advil"]) for d in days),
         "nap_days": sum(bool(d["nap"]) for d in days),
         "left_early_days": sum(bool(d["left_early"]) for d in days),
         "hours_missed": sum(hours_early(v) or 0 for d in days for v in d["left_early"]),
@@ -135,6 +136,7 @@ def weekly_summary(cfg, store, end=None):
         f"Average worst severity: {_fmt(s['avg_worst'], 1, '/10')}"
         + (f" (worst: {_short_date(worst['date'])}, {worst['worst']}/10)" if worst else ""),
         f"Rescue med days this week: {s['rescue_days']}",
+        _advil_line(s["advil_days"], store.days_with("advil", dt.date.today().year, dt.date.today().month)),
         rescue_line,
         f"Water: {_fmt(s['avg_water'])} oz/day on average, goal of {goal} oz hit on "
         f"{s['water_goal_days']} of 7 days",
@@ -194,6 +196,13 @@ def _symptom_counts(days):
                 seen.add(name)
                 c[name] += 1
     return c.most_common(10)
+
+
+def _advil_line(week_days, month_days):
+    line = f"Advil days this week: {week_days} (this month: {month_days})"
+    if month_days >= 12:
+        line += "  ⚠ 15+ days a month of pain relievers can cause rebound headaches"
+    return line
 
 
 def _caffeine_cell(d):
@@ -300,7 +309,7 @@ def doctor_report(cfg, store, start, end):
             f"<tr><td>{dt.date(y, m, 1).strftime('%b %Y')}</td><td>{ms['logged']}/{ms['days']}</td>"
             f"<td>{ms['symptom_days']}</td><td>{ms['migraine_days']}</td><td>{ms['dizzy_days']}</td>"
             f"<td>{ms['sinus_days']}</td><td>{_fmt(ms['avg_worst'], 1)}</td>"
-            f"<td><b>{ms['rescue_days']}</b></td><td>{ms['left_early_days']}"
+            f"<td><b>{ms['rescue_days']}</b></td><td>{ms['advil_days']}</td><td>{ms['left_early_days']}"
             + (f" ({ms['hours_missed']:g}h)" if ms["hours_missed"] else "") + f"</td><td>{ms['nap_days']}</td>"
             f"<td>{_fmt(ms['avg_water'])}</td></tr>")
 
@@ -321,7 +330,7 @@ def doctor_report(cfg, store, start, end):
 
     daily_rows = "".join(
         f"<tr><td class='nowrap'>{_short_date(d['date'])}</td>"
-        f"<td>{cell(d['symptoms'])}</td><td>{cell(d['sinus'])}</td><td>{cell(d['rescue_meds'])}</td>"
+        f"<td>{cell(d['symptoms'])}</td><td>{cell(d['sinus'])}</td><td>{cell(d['rescue_meds'])}</td><td>{cell(d['advil'])}</td>"
         f"<td class='num'>{_fmt(d['water'] or None, 0)}</td>"
         f"<td class='num'>{_fmt(d['electrolytes'] or None, 0)}</td>"
         f"<td class='num'>{_caffeine_cell(d)}</td>"
@@ -373,6 +382,7 @@ def doctor_report(cfg, store, start, end):
   <div class="kpi"><b>{s['dizzy_days']}</b>dizzy/vertigo days</div>
   <div class="kpi"><b>{s['symptom_days']}</b>days with any symptom</div>
   <div class="kpi"><b>{s['rescue_days']}</b>rescue medication days</div>
+  <div class="kpi"><b>{s['advil_days']}</b>Advil days</div>
   <div class="kpi"><b>{s['left_early_days']}</b>days left work early{f" ({s['hours_missed']:g} hours missed)" if s['hours_missed'] else ""}</div>
   <div class="kpi"><b>{s['nap_days']}</b>days needing a nap</div>
   <div class="kpi"><b>{_fmt(s['avg_worst'], 1)}</b>average worst severity (0–10)</div>
@@ -392,7 +402,7 @@ def doctor_report(cfg, store, start, end):
 
 <h2>By month</h2>
 <table><tr><th>Month</th><th>Days logged</th><th>Symptom days</th><th>Migraine / headache</th>
-<th>Dizzy / vertigo</th><th>Sinus pain</th><th>Avg worst severity</th><th>Rescue med days</th>
+<th>Dizzy / vertigo</th><th>Sinus pain</th><th>Avg worst severity</th><th>Rescue med days</th><th>Advil days</th>
 <th>Left early</th><th>Naps</th><th>Avg water (oz)</th></tr>{month_rows}</table>
 
 <h2>Most frequent symptoms</h2>
@@ -409,7 +419,7 @@ def doctor_report(cfg, store, start, end):
 <ul>{''.join(f'<li>{escape(p)}</li>' for p in patterns) or '<li class="dim">Not enough data yet</li>'}</ul>
 
 <h2>Daily log</h2>
-<table><tr><th>Date</th><th>Symptoms</th><th>Sinus</th><th>Rescue meds</th><th>Water (oz)</th>
+<table><tr><th>Date</th><th>Symptoms</th><th>Sinus</th><th>Rescue meds</th><th>Advil</th><th>Water (oz)</th>
 <th>Electrolytes</th><th>Caffeine</th><th>Vitals</th><th>Weather</th><th>Food &amp; notes</th></tr>{daily_rows}</table>
 </body></html>
 """

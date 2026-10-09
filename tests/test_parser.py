@@ -57,6 +57,17 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(times("NAP @yesterday"), [dt.datetime(2026, 9, 29, 12, 0)])
         self.assertEqual(times("left work early @1pm"), [NOW.replace(hour=13)])
 
+    def test_advil(self):
+        self.assertEqual(p("ADVIL 2"), [("advil", "2 tablets (400 mg)")])
+        self.assertEqual(p("advil 1"), [("advil", "1 tablet (200 mg)")])
+        self.assertEqual(p("ADVIL"), [("advil", "advil")])
+        self.assertEqual(p("a2"), [("advil", "2 tablets (400 mg)")])
+        self.assertEqual(p("ibuprofen 400mg"), [("advil", "ibuprofen 400mg")])
+        self.assertEqual(p("LOG", "Advil: 2 @ 11am\n"), [("advil", "2 tablets (400 mg)")])
+        self.assertEqual(times("ADVIL 2 @11:30am"), [NOW.replace(hour=11, minute=30)])
+        self.assertEqual(p("advil 2 for headache"), [("advil", "2 for headache")])
+        self.assertNotIn("advil", [c for c, _ in p("RESCUE sumatriptan")])
+
     def test_monster_caffeine(self):
         self.assertEqual(p("LOG", "Caffeine: 3/4 monster @ 8am\n"), [("caffeine", "3/4 monster (113 mg)")])
         self.assertEqual(p("MONSTER"), [("caffeine", "monster (150 mg)")])
@@ -319,7 +330,7 @@ class StoreAndReportTests(unittest.TestCase):
             if i % 4 == 0:
                 entries.append(("symptoms", "dizzy 4/10", day))
             if i == 1:
-                entries += [("left_early", "2 migraine", day), ("nap", "1 hr", day),
+                entries += [("left_early", "2 migraine", day), ("nap", "1 hr", day), ("advil", "2", day),
                             ("bp", "110/70", day), ("hr", "70 110", day), ("o2", "97", day)]
             s.add_entries(entries)
         s.save_weather([{"day": str(today - dt.timedelta(days=i)), "temp_max": 80, "temp_min": 60,
@@ -337,6 +348,8 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertIn("sumatriptan", page)
         self.assertIn("left 2h early: migraine", page)
         self.assertIn("2 hours missed", page)
+        self.assertIn("Advil days this week: 1", text)
+        self.assertIn("2 tablets (400 mg)", page)
         self.assertIn("BP average 110/70", text)
         self.assertIn("30+ bpm on 1 of 1 checks", text)
         self.assertIn("O2 average 97%", page)
