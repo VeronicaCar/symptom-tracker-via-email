@@ -156,7 +156,7 @@ when your PC is off, let Gmail send them with the free Google Apps Script in
 1. Signed in as the **tracker Gmail**, go to <https://script.google.com> and
    click **New project**. Name it "Symptom Tracker reminders".
 2. Replace everything in the editor with the contents of `Reminders.gs`.
-3. Fill in `CONFIG` at the top: where reminders go, the addresses you send logs
+3. Fill in `CONFIG` at the top (keep it when you paste in a newer version): where reminders go, the addresses you send logs
    from, and your times and days. Save.
 4. Under Project Settings (gear icon), check the **time zone** is yours.
 5. Back in the editor, pick `install` in the function menu and click **Run**.

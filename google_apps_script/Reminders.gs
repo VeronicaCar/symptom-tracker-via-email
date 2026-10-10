@@ -43,8 +43,18 @@ const CHECK_EVERY_MINUTES = 10;
 const TEMPLATE = 'Symptoms: \nSinus pain: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n' +
                  'Rescue meds: \nMisc: \n';
 
+/** Stop with a clear message if CONFIG still has the example addresses. */
+function checkConfig_() {
+  const all = [CONFIG.REMIND_TO].concat(CONFIG.MY_ADDRESSES).join(' ');
+  if (/@example\.com/i.test(all)) {
+    throw new Error('CONFIG still has you@example.com. Put your real addresses in REMIND_TO ' +
+                    'and MY_ADDRESSES at the top of the script, then save.');
+  }
+}
+
 /** Run once to start sending reminders. Safe to run again after editing CONFIG. */
 function install() {
+  checkConfig_();
   ScriptApp.getProjectTriggers()
     .filter(t => t.getHandlerFunction() === 'tick')
     .forEach(t => ScriptApp.deleteTrigger(t));
@@ -61,11 +71,13 @@ function uninstall() {
 
 /** Run to get one reminder right now, to see what it looks like. */
 function sendTestReminder() {
+  checkConfig_();
   sendReminder_(new Date(), todayMode_(new Date()), true);
 }
 
 /** Called every few minutes by the trigger that `install` creates. */
 function tick() {
+  checkConfig_();   // shows up under Executions as a failed run until fixed
   const now = new Date();
   const tz = Session.getScriptTimeZone();
   if (CONFIG.SUGGEST_ON_LOG) {
