@@ -57,6 +57,16 @@ class OneOffTests(unittest.TestCase):
         self.assertEqual(times("NAP @yesterday"), [dt.datetime(2026, 9, 29, 12, 0)])
         self.assertEqual(times("left work early @1pm"), [NOW.replace(hour=13)])
 
+    def test_fatigue(self):
+        self.assertEqual(p("FATIGUE 5/10"), [("fatigue", "5/10")])
+        self.assertEqual(p("fatigue 6"), [("fatigue", "6/10")])
+        self.assertEqual(p("tired 4/10"), [("fatigue", "4/10")])
+        self.assertEqual(p("f7"), [("fatigue", "7/10")])
+        self.assertEqual(p("LOG", "Fatigue: 3.5/10 @ 2pm\n"), [("fatigue", "3.5/10")])
+        self.assertEqual(p("LOG", "Fatigue: 6\n"), [("fatigue", "6/10")])
+        self.assertIn("Fatigue: ", mailer.TEMPLATE)
+        self.assertEqual(parser.severity_of("6/10"), 6)
+
     def test_advil(self):
         self.assertEqual(p("ADVIL 2"), [("advil", "2 tablets (400 mg)")])
         self.assertEqual(p("advil 1"), [("advil", "1 tablet (200 mg)")])
@@ -358,6 +368,8 @@ class StoreAndReportTests(unittest.TestCase):
                 entries += [("symptoms", f"migraine {i % 10}/10", day), ("rescue_meds", "sumatriptan x2" if i == 3 else "sumatriptan", day)]
             if i % 4 == 0:
                 entries.append(("symptoms", "dizzy 4/10", day))
+            if i in (1, 2):
+                entries.append(("fatigue", f"{4 + i}/10", day))
             if i == 1:
                 entries += [("left_early", "2 migraine", day), ("nap", "1 hr", day), ("advil", "2", day),
                             ("bp", "110/70", day), ("hr", "70 110", day), ("o2", "97", day)]
@@ -378,6 +390,8 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertIn("left 2h early: migraine", page)
         self.assertIn("2 hours missed", page)
         self.assertIn("Advil this week: 2 tablets on 1 day", text)
+        self.assertIn("Fatigue: average 5.5/10 on 2 rated days", text)
+        self.assertIn("average fatigue", page)
         self.assertIn("Rescue meds this week: 4 doses on 3 days", text)
         self.assertIn("sumatriptan <span class='dim'>(8 doses)", page)
         self.assertIn("2 tablets (400 mg)", page)

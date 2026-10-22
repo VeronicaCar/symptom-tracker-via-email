@@ -14,7 +14,7 @@ from email.utils import parseaddr, parsedate_to_datetime
 from . import parser, suggestions
 from . import weather as wx
 
-TEMPLATE = ("Symptoms: \nSinus pain: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n"
+TEMPLATE = ("Symptoms: \nSinus pain: \nFatigue: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n"
             "Rescue meds: \nMisc: \n")
 
 
@@ -221,7 +221,7 @@ def reminder(cfg, when, store=None, rough=False, first=False):
     quick = [
         ("+ 8oz water", "WATER 8oz"), ("+ 16oz water", "WATER 16oz"),
         ("Electrolytes", "ELECTROLYTES 1 serving"), ("Caffeine", "CAFFEINE "),
-        ("Migraine", "MIGRAINE /10"), ("Dizzy", "DIZZY /10"), ("Sinus pain", "SINUS /10"),
+        ("Migraine", "MIGRAINE /10"), ("Dizzy", "DIZZY /10"), ("Sinus pain", "SINUS /10"), ("Fatigue", "FATIGUE /10"),
         ("Rescue med", "RESCUE "), ("Advil", "ADVIL 2"), ("Food", "FOOD "), ("Nap", "NAP "),
         ("Leaving early", "LEFT EARLY 2h "), ("Note", "MISC "),
     ]

@@ -19,7 +19,7 @@ const CONFIG = {
   MY_ADDRESSES: ['you@example.com'],
   TIMES: ['09:00', '12:00', '14:00'],          // 24-hour
   DAYS: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'],
-  SKIP_IF_LOGGED_MINUTES: 60,                    // 0 = never skip
+  SKIP_IF_LOGGED_MINUTES: 0,                     // skip a reminder if you logged this recently; 0 = always send
   WATER_GOAL_OZ: 64,
   // Reply with ideas from SUGGESTIONS soon after you log a symptom at those levels.
   SUGGEST_ON_LOG: true,
@@ -40,7 +40,7 @@ const SUGGESTIONS = [
 const GRACE_MINUTES = 30;   // a reminder can go out up to this long after its time
 const CHECK_EVERY_MINUTES = 10;
 
-const TEMPLATE = 'Symptoms: \nSinus pain: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n' +
+const TEMPLATE = 'Symptoms: \nSinus pain: \nFatigue: \nWater: \nElectrolytes: \nCaffeine: \nFood: \n' +
                  'Rescue meds: \nMisc: \n';
 
 /** Stop with a clear message if CONFIG still has the example addresses. */
@@ -352,7 +352,7 @@ function sendReminder_(at, mode, first) {
                       : 'Time to check in.';
   const quick = [['+ 8oz water', 'WATER 8oz'], ['+ 16oz water', 'WATER 16oz'],
                  ['Electrolytes', 'ELECTROLYTES 1 serving'], ['Caffeine', 'CAFFEINE '],
-                 ['Migraine', 'MIGRAINE /10'], ['Dizzy', 'DIZZY /10'], ['Sinus pain', 'SINUS /10'],
+                 ['Migraine', 'MIGRAINE /10'], ['Dizzy', 'DIZZY /10'], ['Sinus pain', 'SINUS /10'], ['Fatigue', 'FATIGUE /10'],
                  ['Rescue med', 'RESCUE '], ['Advil', 'ADVIL 2'], ['Food', 'FOOD '], ['Nap', 'NAP '],
                  ['Leaving early', 'LEFT EARLY 2h '], ['Note', 'MISC ']];
   const yesterday = first ? [['Napped yesterday', 'NAP @yesterday'],

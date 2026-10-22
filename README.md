@@ -62,6 +62,7 @@ BP, HR or O2 (`BP 113/75 @ 1 pm`).
 | `MIGRAINE 6/10`            | Symptoms: migraine 6/10 (severity 6)   |
 | `DIZZY 4/10`               | Symptoms: dizzy 4/10                   |
 | `SINUS 5/10`               | Sinus pain: 5/10                       |
+| `FATIGUE 6/10` or `tired 6` | Fatigue: 6/10                         |
 | `COFFEE`                   | Caffeine: coffee                       |
 | `MONSTER 3/4`              | Caffeine: 3/4 monster (113 mg)         |
 | `2 monsters`               | Caffeine: 2 monsters (300 mg)          |
@@ -104,6 +105,7 @@ body) can be just codes:
 | `v5`        | Vertigo 5/10                  |
 | `n4`        | Nausea 4/10                   |
 | `s4`        | Sinus pain 4/10               |
+| `f6`        | Fatigue 6/10                  |
 | `r sumatriptan` | Rescue med: sumatriptan   |
 | `a2`        | Advil 2 tablets (400 mg)      |
 | `z30`       | Nap 30 min                    |
@@ -138,7 +140,8 @@ buttons for common entries. The first reminder of the day also has **Napped
 yesterday** and **Left early yesterday** buttons. You can also just reply and
 type the lines.
 
-- A reminder is skipped if you logged something in the last hour (adjustable).
+- Reminders always go out. To skip one when you logged recently, set
+  "Skip if I logged in the last" (or `SKIP_IF_LOGGED_MINUTES` in the Gmail script).
 - **Rough day**: tap the button in a reminder, email `ROUGH DAY`, or pick it
   in the window's "Today" box. You'll get only the last check-in of the day.
 - **Pause today**: no more reminders today (`PAUSE`). `RESUME` undoes either.
@@ -167,8 +170,8 @@ when your PC is off, let Gmail send them with the free Google Apps Script in
 7. In the desktop app, untick Settings → Reminders → **Send check-in reminders
    from this PC** so you don't get two of each.
 
-The script checks every 10 minutes, skips a reminder if you emailed a log in
-the last hour, and honours `ROUGH DAY`, `PAUSE` and `RESUME` emails. It also
+The script checks every 10 minutes (and can skip a reminder after a recent log if you set
+`SKIP_IF_LOGGED_MINUTES`), and honours `ROUGH DAY`, `PAUSE` and `RESUME` emails. It also
 shows today's water against `WATER_GOAL_OZ` and the rescue-med and Advil
 warnings, worked out from the log emails in the tracker inbox (a lighter version
 of the desktop app's reading; entries backdated to another day aren't counted). Run `uninstall` to stop it. Your logs are still

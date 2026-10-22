@@ -28,7 +28,7 @@ def collect(store, start, end):
     """Per-day aggregates for start..end (dates, inclusive)."""
     weather = store.weather(start - DAY, end)
     pollen = store.pollen(start, end)
-    days = {d: {"date": d, "symptoms": [], "sinus": [], "rescue_meds": [], "advil": [], "food": [],
+    days = {d: {"date": d, "symptoms": [], "sinus": [], "fatigue": [], "fatigue_worst": None, "rescue_meds": [], "advil": [], "food": [],
                 "misc": [], "nap": [], "left_early": [], "vitals": [], "water": 0.0, "electrolytes": 0.0, "caffeine": 0.0, "caffeine_mg": 0.0,
                 "worst": None, "sinus_worst": None, "migraine": False, "dizzy": False,
                 "logged": False}
@@ -53,6 +53,8 @@ def collect(store, start, end):
                 d["worst"] = max(d["worst"] or 0, sev)
             d["migraine"] |= bool(MIGRAINE_RE.search(value))
             d["dizzy"] |= bool(DIZZY_RE.search(value))
+        if cat == "fatigue" and sev is not None:
+            d["fatigue_worst"] = max(d["fatigue_worst"] or 0, sev)
         if cat == "sinus" and sev is not None:
             d["sinus_worst"] = max(d["sinus_worst"] or 0, sev)
     for day, d in days.items():
@@ -77,6 +79,8 @@ def stats(days, water_goal):
         "migraine_days": sum(d["migraine"] for d in days),
         "dizzy_days": sum(d["dizzy"] for d in days),
         "sinus_days": sum(bool(d["sinus"]) for d in days),
+        "avg_fatigue": _avg([d["fatigue_worst"] for d in days]),
+        "fatigue_rated_days": sum(d["fatigue_worst"] is not None for d in days),
         "rescue_days": sum(bool(d["rescue_meds"]) for d in days),
         "advil_days": sum(bool(d["advil"]) for d in days),
         "rescue_doses": sum(doses(v) for d in days for v in d["rescue_meds"]),
@@ -135,6 +139,7 @@ def weekly_summary(cfg, store, end=None):
         f"Migraine/headache days: {s['migraine_days']} ({delta(s['migraine_days'], prev['migraine_days'])})",
         f"Dizzy/vertigo days: {s['dizzy_days']} ({delta(s['dizzy_days'], prev['dizzy_days'])})",
         f"Sinus pain days: {s['sinus_days']}",
+        _fatigue_line(s, days),
         f"Average worst severity: {_fmt(s['avg_worst'], 1, '/10')}"
         + (f" (worst: {_short_date(worst['date'])}, {worst['worst']}/10)" if worst else ""),
         f"Rescue meds this week: {_doses_on_days(s['rescue_doses'], s['rescue_days'], 'dose')}",
@@ -213,6 +218,14 @@ def _advil_line(tablets, week_days, month_days):
     if month_days >= 12:
         line += "  ⚠ 15+ days a month of pain relievers can cause rebound headaches"
     return line
+
+
+def _fatigue_line(s, days):
+    if not s["fatigue_rated_days"]:
+        return "Fatigue: not rated this week"
+    worst = max((d for d in days if d["fatigue_worst"] is not None), key=lambda d: d["fatigue_worst"])
+    return (f"Fatigue: average {s['avg_fatigue']:.1f}/10 on {s['fatigue_rated_days']} rated days "
+            f"(worst: {_short_date(worst['date'])}, {worst['fatigue_worst']:g}/10)")
 
 
 def _caffeine_cell(d):
@@ -318,7 +331,7 @@ def doctor_report(cfg, store, start, end):
         month_rows += (
             f"<tr><td>{dt.date(y, m, 1).strftime('%b %Y')}</td><td>{ms['logged']}/{ms['days']}</td>"
             f"<td>{ms['symptom_days']}</td><td>{ms['migraine_days']}</td><td>{ms['dizzy_days']}</td>"
-            f"<td>{ms['sinus_days']}</td><td>{_fmt(ms['avg_worst'], 1)}</td>"
+            f"<td>{ms['sinus_days']}</td><td>{_fmt(ms['avg_fatigue'], 1)}</td><td>{_fmt(ms['avg_worst'], 1)}</td>"
             f"<td><b>{ms['rescue_days']}</b> <span class='dim'>({ms['rescue_doses']:g} doses)</span></td>"
             f"<td>{ms['advil_days']} <span class='dim'>({ms['advil_tablets']:g} tablets)</span></td><td>{ms['left_early_days']}"
             + (f" ({ms['hours_missed']:g}h)" if ms["hours_missed"] else "") + f"</td><td>{ms['nap_days']}</td>"
@@ -344,7 +357,7 @@ def doctor_report(cfg, store, start, end):
 
     daily_rows = "".join(
         f"<tr><td class='nowrap'>{_short_date(d['date'])}</td>"
-        f"<td>{cell(d['symptoms'])}</td><td>{cell(d['sinus'])}</td><td>{cell(d['rescue_meds'])}</td><td>{cell(d['advil'])}</td>"
+        f"<td>{cell(d['symptoms'])}</td><td>{cell(d['sinus'])}</td><td>{cell(d['fatigue'])}</td><td>{cell(d['rescue_meds'])}</td><td>{cell(d['advil'])}</td>"
         f"<td class='num'>{_fmt(d['water'] or None, 0)}</td>"
         f"<td class='num'>{_fmt(d['electrolytes'] or None, 0)}</td>"
         f"<td class='num'>{_caffeine_cell(d)}</td>"
@@ -395,6 +408,7 @@ def doctor_report(cfg, store, start, end):
   <div class="kpi"><b>{s['migraine_days']}</b>migraine/headache days</div>
   <div class="kpi"><b>{s['dizzy_days']}</b>dizzy/vertigo days</div>
   <div class="kpi"><b>{s['symptom_days']}</b>days with any symptom</div>
+  <div class="kpi"><b>{_fmt(s['avg_fatigue'], 1)}</b>average fatigue (0–10)</div>
   <div class="kpi"><b>{s['rescue_days']}</b>rescue medication days ({_n(s['rescue_doses'], 'dose')})</div>
   <div class="kpi"><b>{s['advil_days']}</b>Advil days ({_n(s['advil_tablets'], 'tablet')})</div>
   <div class="kpi"><b>{s['left_early_days']}</b>days left work early{f" ({s['hours_missed']:g} hours missed)" if s['hours_missed'] else ""}</div>
@@ -416,7 +430,7 @@ def doctor_report(cfg, store, start, end):
 
 <h2>By month</h2>
 <table><tr><th>Month</th><th>Days logged</th><th>Symptom days</th><th>Migraine / headache</th>
-<th>Dizzy / vertigo</th><th>Sinus pain</th><th>Avg worst severity</th><th>Rescue med days</th><th>Advil days</th>
+<th>Dizzy / vertigo</th><th>Sinus pain</th><th>Avg fatigue</th><th>Avg worst severity</th><th>Rescue med days</th><th>Advil days</th>
 <th>Left early</th><th>Naps</th><th>Avg water (oz)</th></tr>{month_rows}</table>
 
 <h2>Most frequent symptoms</h2>
@@ -433,7 +447,7 @@ def doctor_report(cfg, store, start, end):
 <ul>{''.join(f'<li>{escape(p)}</li>' for p in patterns) or '<li class="dim">Not enough data yet</li>'}</ul>
 
 <h2>Daily log</h2>
-<table><tr><th>Date</th><th>Symptoms</th><th>Sinus</th><th>Rescue meds</th><th>Advil</th><th>Water (oz)</th>
+<table><tr><th>Date</th><th>Symptoms</th><th>Sinus</th><th>Fatigue</th><th>Rescue meds</th><th>Advil</th><th>Water (oz)</th>
 <th>Electrolytes</th><th>Caffeine</th><th>Vitals</th><th>Weather</th><th>Food &amp; notes</th></tr>{daily_rows}</table>
 </body></html>
 """

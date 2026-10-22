@@ -21,14 +21,14 @@ import html
 import re
 from typing import NamedTuple, Optional
 
-CATEGORIES = ("symptoms", "sinus", "water", "electrolytes", "caffeine", "food",
+CATEGORIES = ("symptoms", "sinus", "fatigue", "water", "electrolytes", "caffeine", "food",
               "rescue_meds", "advil", "nap", "left_early", "bp", "hr", "o2", "misc")
-LABELS = {"symptoms": "Symptoms", "sinus": "Sinus pain", "water": "Water",
+LABELS = {"symptoms": "Symptoms", "sinus": "Sinus pain", "fatigue": "Fatigue", "water": "Water",
           "electrolytes": "Electrolytes", "caffeine": "Caffeine", "food": "Food",
           "rescue_meds": "Rescue meds", "advil": "Advil", "nap": "Nap", "left_early": "Left early",
           "bp": "Blood pressure", "hr": "Heart rate", "o2": "O2", "misc": "Misc"}
 VITALS = ("bp", "hr", "o2")
-SEVERITY_CATEGORIES = {"symptoms", "sinus"}
+SEVERITY_CATEGORIES = {"symptoms", "sinus", "fatigue"}
 NO_VALUE_NEEDED = {"nap", "left_early", "rescue_meds", "advil"}  # "LEFT EARLY" alone is enough
 
 # Generic names just pick the category; every other alias is kept in the
@@ -36,6 +36,7 @@ NO_VALUE_NEEDED = {"nap", "left_early", "rescue_meds", "advil"}  # "LEFT EARLY" 
 _GENERIC = {
     "symptoms": ("symptom", "symptoms", "sym", "sx", "feeling"),
     "sinus": ("sinus", "sinuses", "sinus pain"),
+    "fatigue": ("fatigue", "fatigued", "tired", "tiredness", "exhausted", "exhaustion"),
     "water": ("water", "h2o", "drink", "drank", "fluid", "fluids"),
     "electrolytes": ("electrolytes", "electrolyte", "lytes"),
     "caffeine": ("caffeine",),
@@ -53,8 +54,9 @@ _GENERIC = {
 }
 _LABELLED = {
     "symptoms": ("pain", "migraine", "headache", "dizzy", "dizziness", "vertigo", "nausea",
-                 "nauseous", "fatigue", "tired", "brain fog", "brainfog", "lightheaded",
+                 "nauseous", "brain fog", "brainfog", "lightheaded",
                  "presyncope", "aura"),
+    "fatigue": (),
     "sinus": ("congestion", "congested", "allergies", "allergy"),
     "water": (),
     "electrolytes": ("salt", "salt tabs", "sodium", "lmnt", "liquid iv", "liquidiv", "nuun"),
@@ -90,6 +92,7 @@ DEFAULT_CODES = {
     "z": "nap: {n} min",
     "le": "left early: {text}",
     "a": "advil: {n}",
+    "f": "fatigue: {n}/10",
 }
 
 COMMANDS = [("rough day", "rough"), ("rough", "rough"), ("pause today", "pause"),
@@ -279,6 +282,8 @@ def normalize(category, value):
     caffeine '3/4 monster' -> '3/4 monster (113 mg)'."""
     if category in VITALS:
         return _normalize_vital(category, value)
+    if category == "fatigue" and re.fullmatch(r"\s*\d+(?:\.\d+)?\s*", value):
+        return f"{value.strip()}/10"  # "FATIGUE 5" -> "5/10"
     if category == "advil":
         return _normalize_advil(value)
     if category == "caffeine":
