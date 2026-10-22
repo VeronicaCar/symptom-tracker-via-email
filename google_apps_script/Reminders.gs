@@ -331,7 +331,7 @@ function notes_(now) {
   let water = 'Water so far today: ' + t.waterOz + ' of ' + goal + ' oz.';
   if (t.waterOz >= goal) water += ' Goal reached!';
   else if (t.waterOz < pace * 0.75) water += ' A little behind, a glass now would help.';
-  const notes = [water];
+  const notes = [];
   if (t.rescueDays >= 8) {
     notes.push('Heads up: rescue meds on ' + t.rescueDays + ' days this month. ' +
                '10+ days a month can cause rebound headaches.');
@@ -340,8 +340,8 @@ function notes_(now) {
     notes.push('Heads up: Advil on ' + t.advilDays + ' days this month. ' +
                '15+ days a month of pain relievers can cause rebound headaches.');
   }
-  suggestions_(todaysLatestSeverities_(now), t).forEach(idea => notes.push('Might help: ' + idea));
-  return { notes: notes, progress: goal ? Math.min(t.waterOz / goal, 1) : 0 };
+  return { water: water, notes: notes, ideas: suggestions_(todaysLatestSeverities_(now), t),
+           progress: goal ? Math.min(t.waterOz / goal, 1) : 0 };
 }
 
 function sendReminder_(at, mode, first) {
@@ -360,7 +360,7 @@ function sendReminder_(at, mode, first) {
   const day = rough ? [['Resume normal', 'RESUME']]
                     : [['Rough day (1 check-in)', 'ROUGH DAY'], ['Pause today', 'PAUSE']];
   const buttons = list => list.map(([l, s]) => button_(mailto_(tracker, s), l)).join('');
-  let info = { notes: [], progress: null };
+  let info = { water: '', notes: [], ideas: [], progress: null };
   try {
     info = notes_(new Date());
   } catch (e) {  // never let the totals stop a reminder
@@ -374,7 +374,10 @@ function sendReminder_(at, mode, first) {
   const html =
     '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c">' +
     '<p style="margin-bottom:6px"><b>' + intro + '</b></p>' +
-    info.notes.map(n => '<p style="margin:2px 0">' + n + '</p>').join('') + bar +
+    (info.water ? '<p style="margin:2px 0">' + info.water + '</p>' : '') + bar +
+    info.notes.map(n => '<p style="margin:2px 0">' + n + '</p>').join('') +
+    (info.ideas.length ? '<p style="margin:10px 0 2px"><b>Might help</b></p><ul style="margin-top:2px">' +
+                         info.ideas.map(i => '<li style="margin-bottom:4px">' + i + '</li>').join('') + '</ul>' : '') +
     '<p>Tap below to open a fill-in-the-blanks log, or just reply to this email.</p>' +
     '<p>' + button_(mailto_(tracker, 'LOG', TEMPLATE), 'Fill in a full log', true) + '</p>' +
     '<p style="margin-bottom:2px;color:#555">Or add just one thing:</p><p>' + buttons(quick) + '</p>' +
@@ -383,7 +386,9 @@ function sendReminder_(at, mode, first) {
     '<p style="margin-bottom:2px;color:#555">How\'s today going?</p><p>' + buttons(day) + '</p>' +
     '<p style="color:#555;font-size:13px">Short codes like <b>w16</b>, <b>m7</b> and <b>le2 migraine</b> ' +
     'work as the subject. Add @time to backdate, e.g. <b>w16 @2pm</b>.</p></div>';
-  const text = intro + '\n' + info.notes.join('\n') + '\n\nReply to this email and fill in whatever applies. ' +
+  const text = intro + '\n' + [info.water].concat(info.notes).filter(Boolean).join('\n') +
+               (info.ideas.length ? '\n\nMight help:\n' + info.ideas.map(i => '- ' + i).join('\n') : '') +
+               '\n\nReply to this email and fill in whatever applies. ' +
                'Leave anything blank to skip it.\n\n' + TEMPLATE +
                '\nSubject ROUGH DAY = only one check-in today, PAUSE = none today, RESUME = back to normal.\n';
 

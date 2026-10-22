@@ -420,9 +420,10 @@ class StoreAndReportTests(unittest.TestCase):
         self.store.add_entries([("symptoms", "migraine 4/10"), ("sinus", "2/10")])
         cfg = dict(config.DEFAULTS, tracker_email="t@gmail.com")
         _, text, _ = mailer.reminder(cfg, dt.datetime.now(), self.store)
-        self.assertIn("Might help: Migraine 4/10", text)
+        self.assertIn("Might help:\n- Sinus pain 2/10", text)
+        self.assertIn("\n- Migraine 4/10", text)
         self.assertIn("a2 = advil 2 tablets (400 mg)", text)
-        self.assertIn("Might help: Sinus pain 2/10", text)
+        self.assertIn("- Sinus pain 2/10", text)
 
     def test_reminder_email(self):
         cfg = dict(config.DEFAULTS, tracker_email="t@gmail.com")

@@ -196,21 +196,21 @@ def reminder(cfg, when, store=None, rough=False, first=False):
     label = when.strftime("%I:%M %p").lstrip("0")
     subject = f"Symptom check-in ({label})"
     codes = cfg.get("short_codes") or parser.DEFAULT_CODES
-    notes = []
+    notes, ideas, water = [], [], ""
     progress = None
     if store is not None:
         water, progress = _water_line(cfg, store, dt.datetime.now())
-        notes.append(water)
         n = store.rescue_days(when.year, when.month)
         if n >= 8:
             notes.append(f"Heads up: rescue meds on {n} days this month. "
                          "10+ days a month can cause rebound headaches.")
-        notes += [f"Might help: {idea}" for idea in suggestions.for_today(store, when.date())]
+        ideas = suggestions.for_today(store, when.date())
     intro = ("Rough day, so this is the only check-in today. Log just what you can."
              if rough else "Time to check in.")
     examples = code_examples(codes)
     text = (
-        f"{intro}\n" + "".join(f"{n}\n" for n in notes) +
+        f"{intro}\n" + "".join(f"{n}\n" for n in [water] + notes if n)
+        + ("\nMight help:\n" + "".join(f"- {i}\n" for i in ideas) if ideas else "") +
         "\nReply to this email and fill in whatever applies. Leave anything blank to skip it.\n\n"
         f"{TEMPLATE}\n"
         f"Quick one-off: email {to} with a subject like \"WATER 16oz\", \"MIGRAINE 6/10\" or a short code.\n"
@@ -237,7 +237,10 @@ def reminder(cfg, when, store=None, rough=False, first=False):
     html = (
         '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c">'
         f"<p style='margin-bottom:6px'><b>{intro}</b></p>"
-        + "".join(f"<p style='margin:2px 0'>{n}</p>" for n in notes) + bar +
+        + (f"<p style='margin:2px 0'>{water}</p>" if water else "") + bar
+        + "".join(f"<p style='margin:2px 0'>{n}</p>" for n in notes)
+        + ("<p style='margin:10px 0 2px'><b>Might help</b></p><ul style='margin-top:2px'>"
+           + "".join(f"<li style='margin-bottom:4px'>{i}</li>" for i in ideas) + "</ul>" if ideas else "") +
         "<p>Tap below to open a fill-in-the-blanks log, or just reply to this email.</p>"
         f"<p>{_button(_mailto(to, 'LOG', TEMPLATE), 'Fill in a full log', primary=True)}</p>"
         "<p style='margin-bottom:2px;color:#555'>Or add just one thing:</p><p>"
