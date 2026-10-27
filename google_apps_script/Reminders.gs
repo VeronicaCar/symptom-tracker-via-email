@@ -34,7 +34,8 @@ const SUGGESTIONS = [
   { name: 'Migraine', match: /migraine|headache/i, code: /^m(\d+(?:\.\d+)?)$/i,
     at: 2, tips: MIGRAINE_TIPS, strongAt: 3.5, strongTip: 'a Nurtec' },
   { name: 'Dizziness', match: /dizz|vertigo|light-?headed/i, code: /^[dv](\d+(?:\.\d+)?)$/i,
-    at: 2, tips: MIGRAINE_TIPS, strongAt: 3.5, strongTip: 'a Dramamine Less-Drowsy' },
+    at: 2, tips: ['a visual break', 'a walk', 'more water'], join: 'and',
+    strongAt: 3.5, strongTip: 'a Dramamine Less-Drowsy' },
 ];
 
 const GRACE_MINUTES = 30;   // a reminder can go out up to this long after its time

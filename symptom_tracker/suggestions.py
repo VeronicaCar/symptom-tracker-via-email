@@ -12,7 +12,8 @@ RULES = [
     {"name": "Migraine", "match": re.compile(r"migraine|headache", re.I),
      "at": 2, "tips": MIGRAINE_TIPS, "strong_at": 3.5, "strong_tip": "a Nurtec"},
     {"name": "Dizziness", "match": re.compile(r"dizz|vertigo|light-?headed", re.I),
-     "at": 2, "tips": MIGRAINE_TIPS, "strong_at": 3.5, "strong_tip": "a Dramamine Less-Drowsy"},
+     "at": 2, "tips": ["a visual break", "a walk", "more water"], "join": "and",
+     "strong_at": 3.5, "strong_tip": "a Dramamine Less-Drowsy"},
 ]
 _SEV_RE = re.compile(r"(\d+(?:\.\d+)?)\s*/\s*10\b")
 

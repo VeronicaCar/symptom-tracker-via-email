@@ -196,7 +196,7 @@ When you log a symptom at these levels, you get ideas for what might help:
 |------------|--------------------------------------------------------------------|---------------------------|
 | Sinus pain | an Advil and more water                                             |                           |
 | Migraine   | mint gum, menthol head stick, migraine glasses, a walk loop, electrolytes | a Nurtec           |
-| Dizziness  | the same as migraine                                                | a Dramamine Less-Drowsy   |
+| Dizziness  | a visual break, a walk and more water                               | a Dramamine Less-Drowsy   |
 
 The Gmail script replies to your log email with them within about 10 minutes
 (turn off with `SUGGEST_ON_LOG: false`), and every reminder lists them based on
