@@ -431,6 +431,38 @@ function todaysRatings_(messages, tz) {
   return out;
 }
 
+/**
+ * What an email logged, tidied for reading: lines your mail app wrapped are joined
+ * back up, and a bare subject like FOOD is put together with what you wrote under
+ * it ("Food: banana"). The LOG and check-in subjects and blank template lines are left out.
+ */
+function logEntries_(message) {
+  const lines = myLines_(message);
+  const subject = lines.shift() || '';
+  const body = [];
+  lines.forEach(line => {
+    if (/^[a-z ]+:\s*$/i.test(line) || COMMAND_RE_.test(line)) return;
+    const prev = body[body.length - 1];
+    // Mail apps wrap long lines at about 70 characters; a long line followed by
+    // one that isn't a new "Label:" line or code is a single wrapped sentence.
+    if (prev && prev.length >= 60 && !/^[A-Za-z ]+:/.test(line) && !/^[A-Z]{2,}\b/.test(line)) {
+      body[body.length - 1] = prev + ' ' + line;
+    } else {
+      body.push(line);
+    }
+  });
+  const pretty = s => s.replace(/^([A-Z][A-Z ]*[A-Z])\b/, w => w.charAt(0) + w.slice(1).toLowerCase())
+                       .replace(/^Misc\b/, 'Note')
+                       .replace(/^a(\d+(?:\.\d+)?)$/i, 'Advil x$1');   // short code a2
+  if (/^(log|symptom check-in.*)$/i.test(subject) || COMMAND_RE_.test(subject) || !subject) {
+    return body.map(pretty);
+  }
+  if (/^[a-z ]+$/i.test(subject) && body.length) {   // a bare label, e.g. FOOD + "banana"
+    return [pretty(subject.trim()) + ': ' + body.join(' ')];
+  }
+  return [pretty(subject)].concat(body.map(pretty));
+}
+
 /** {subject, text, html} summarising today's logs. */
 function todaySoFar_(now) {
   const tz = Session.getScriptTimeZone();
@@ -441,11 +473,9 @@ function todaySoFar_(now) {
   const meds = [], logged = [];
   messages.forEach(m => {
     const time = Utilities.formatDate(m.getDate(), tz, 'h:mm a');
-    myLines_(m).forEach(line => {
-      if (/^symptom check-in/i.test(line) || COMMAND_RE_.test(line) || /^[a-z ]+:\s*$/i.test(line)) return;
-      const shown = line.replace(/^a(\d+(?:\.\d+)?)$/i, 'Advil x$1');   // short code a2
-      logged.push(time + '  ' + shown);
-      if (RESCUE_RE_.test(line) || ADVIL_RE_.test(line)) meds.push(time + '  ' + shown);
+    logEntries_(m).forEach((entry, i) => {
+      logged.push((i ? '' : time) + '  ' + entry);   // time only on an email's first entry
+      if (RESCUE_RE_.test(entry) || ADVIL_RE_.test(entry)) meds.push(entry);
     });
   });
 
@@ -460,7 +490,7 @@ function todaySoFar_(now) {
   } else {
     lines.push('No symptom ratings logged yet today.');
   }
-  lines.push('Meds today: ' + (meds.length ? meds.map(x => x.replace(/^\S+ \S+\s+/, '')).join('; ') : 'none logged'));
+  lines.push('Meds today: ' + (meds.length ? meds.join('; ') : 'none logged'));
   lines.push('This month: rescue meds on ' + t.rescueDays + ' day' + (t.rescueDays === 1 ? '' : 's') +
              ', Advil on ' + t.advilDays + ' day' + (t.advilDays === 1 ? '' : 's'));
   const latest = {};
@@ -471,7 +501,7 @@ function todaySoFar_(now) {
   const subject = 'Today so far (' + Utilities.formatDate(now, tz, 'h:mm a') + ')';
   const text = 'Today so far, ' + dateLabel + '\n\n' + lines.join('\n') +
                (ideas.length ? '\n\nMight help:\n' + ideas.map(i => '- ' + i).join('\n') : '') +
-               '\n\nEverything you logged today:\n' + (logged.length ? logged.join('\n') : 'Nothing yet.') + '\n';
+               '\n\nEverything you logged today:\n' + (logged.length ? logged.map(l => l.replace(/^  /, '          ')).join('\n') : 'Nothing yet.') + '\n';
   const progress = goal ? Math.min(t.waterOz / goal, 1) : 0;
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const html =
