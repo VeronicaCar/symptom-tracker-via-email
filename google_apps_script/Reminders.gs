@@ -73,14 +73,18 @@ function uninstall() {
 /** Run to get one reminder right now, to see what it looks like. */
 function sendTestReminder() {
   checkConfig_();
+  Logger.log('Building a test reminder...');
   sendReminder_(new Date(), todayMode_(new Date()), true);
+  Logger.log('Sent to ' + CONFIG.REMIND_TO + '.');
 }
 
 /** Run to email yourself the "Today so far" summary right now. */
 function sendTestToday() {
   checkConfig_();
+  Logger.log('Building today so far...');
   const s = todaySoFar_(new Date());
   GmailApp.sendEmail(CONFIG.REMIND_TO, s.subject, s.text, { htmlBody: s.html });
+  Logger.log('Sent to ' + CONFIG.REMIND_TO + '.');
 }
 
 /** Called every few minutes by the trigger that `install` creates. */
@@ -213,26 +217,45 @@ function waterOz_(line) {
   return total;
 }
 
-/** Messages you sent since a given time, oldest first. */
+/**
+ * Messages you sent since a given time, oldest first. Gmail calls are slow, so a
+ * run fetches each stretch of mail once (in one batch) and reuses it.
+ */
+let fetched_ = null;   // {since, messages} for this run
 function myMessagesSince_(since) {
-  const q = fromMe_() + ' after:' + Math.floor(since.getTime() / 1000);
-  const mine = CONFIG.MY_ADDRESSES.map(a => a.toLowerCase());
-  const out = [];
-  GmailApp.search(q, 0, 200).forEach(thread => thread.getMessages().forEach(m => {
-    const from = (m.getFrom().match(/<([^>]+)>/) || [null, m.getFrom()])[1].toLowerCase();
-    if (m.getDate() >= since && mine.indexOf(from) >= 0) out.push(m);
-  }));
-  return out.sort((a, b) => a.getDate() - b.getDate());
+  if (!fetched_ || since < fetched_.since) {
+    const q = fromMe_() + ' after:' + Math.floor(since.getTime() / 1000);
+    const mine = CONFIG.MY_ADDRESSES.map(a => a.toLowerCase());
+    const out = [];
+    GmailApp.getMessagesForThreads(GmailApp.search(q, 0, 200)).forEach(msgs => msgs.forEach(m => {
+      const date = m.getDate();
+      if (date < since) return;
+      const from = (m.getFrom().match(/<([^>]+)>/) || [null, m.getFrom()])[1].toLowerCase();
+      if (mine.indexOf(from) >= 0) out.push(m);
+    }));
+    out.sort((a, b) => a.getDate() - b.getDate());
+    fetched_ = { since: since, messages: out };
+  }
+  return fetched_.messages.filter(m => m.getDate() >= since);
 }
 
-/** {waterOz, rescueDays, advilDays} for today and this month. */
+/**
+ * {waterOz, rescueDays, advilDays} for today and this month. Earlier days of the
+ * month are remembered, so only today's emails are read on each run.
+ */
 function totals_(now) {
   const tz = Session.getScriptTimeZone();
   const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
-  const monthStart = atTime_(new Date(Utilities.formatDate(now, tz, 'yyyy-MM-01') + 'T12:00:00Z'), '00:00');
+  const month = today.slice(0, 7);
+  const props = PropertiesService.getScriptProperties();
+  let saved = null;
+  try {
+    saved = JSON.parse(props.getProperty('med days ' + month) || 'null');
+  } catch (e) {}
+  if (!saved || saved.through > today) saved = { through: month + '-01', rescue: [], advil: [] };
   let waterOz = 0;
-  const rescue = new Set(), advil = new Set();
-  myMessagesSince_(monthStart).forEach(m => {
+  const rescue = new Set(saved.rescue), advil = new Set(saved.advil);
+  myMessagesSince_(atTime_(new Date(saved.through + 'T12:00:00Z'), '00:00')).forEach(m => {
     const day = Utilities.formatDate(m.getDate(), tz, 'yyyy-MM-dd');
     myLines_(m).forEach(line => {
       if (day === today) waterOz += waterOz_(line);
@@ -242,6 +265,15 @@ function totals_(now) {
       if (ADVIL_RE_.test(body)) advil.add(day);
     });
   });
+  // Days before today are finished, so remember them.
+  props.setProperty('med days ' + month, JSON.stringify({
+    through: today,
+    rescue: Array.from(rescue).filter(d => d < today),
+    advil: Array.from(advil).filter(d => d < today),
+  }));
+  Object.keys(props.getProperties())
+    .filter(k => k.indexOf('med days ') === 0 && k !== 'med days ' + month)
+    .forEach(k => props.deleteProperty(k));
   return { waterOz: Math.round(waterOz), rescueDays: rescue.size, advilDays: advil.size };
 }
 
