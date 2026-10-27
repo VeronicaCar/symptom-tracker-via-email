@@ -454,6 +454,17 @@ def split_time(text, ref):
             return base[:m.start()].strip(), when
     if at_text is not None:
         return base, parse_when(at_text, ref)
+    # "out all day @10/23, unsure if flu shot": an @ in the middle of the text
+    for m in re.finditer(r"(?:^|(?<=\s))@\s*(\S+(?:\s+\S+){0,3})", text):
+        words = m.group(1).split()
+        for n in range(len(words), 0, -1):
+            when = parse_when(" ".join(w.strip(",.;") for w in words[:n]), ref)
+            if when:
+                after = text[m.start(1):].split(None, n)
+                rest = after[n] if len(after) > n else ""
+                punct = re.search(r"[,.;]*$", words[n - 1]).group(0)   # keep "day, unsure"
+                joined = (text[:m.start()].rstrip() + punct + " " + rest).strip()
+                return joined, when
     return text, None
 
 
