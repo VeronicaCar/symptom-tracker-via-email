@@ -431,10 +431,18 @@ def parse_when(text, ref):
 
 def split_time(text, ref):
     """'16oz @2pm' -> ('16oz', datetime). Also '16oz on 10/2', '16oz on 10/2 @ 2pm',
-    '16oz @10/2 2pm'. The space before @ is optional ('8/10@ 12 pm'). Unparseable
+    '16oz @10/2 2pm', '@10/2 16oz'. The space before @ is optional ('8/10@ 12 pm'). Unparseable
     @ text, like an email address, is left alone."""
     if ref is None:
         return text, None
+    lead = re.match(r"@\s*(\S+(?:\s+\S+){0,3})", text)
+    if lead:  # "@10/23 FOOD banana": the time can come first too
+        words = lead.group(1).split()
+        for n in range(len(words), 0, -1):
+            when = parse_when(" ".join(words[:n]), ref)
+            if when:
+                rest = text[lead.start(1):].split(None, n)
+                return (rest[n] if len(rest) > n else "").strip(), when
     base, at_text = text, None
     pos = text.rfind("@")
     if pos >= 0 and parse_when(text[pos + 1:], ref):
@@ -446,6 +454,17 @@ def split_time(text, ref):
             return base[:m.start()].strip(), when
     if at_text is not None:
         return base, parse_when(at_text, ref)
+    # "out all day @10/23, unsure if flu shot": an @ in the middle of the text
+    for m in re.finditer(r"(?:^|(?<=\s))@\s*(\S+(?:\s+\S+){0,3})", text):
+        words = m.group(1).split()
+        for n in range(len(words), 0, -1):
+            when = parse_when(" ".join(w.strip(",.;") for w in words[:n]), ref)
+            if when:
+                after = text[m.start(1):].split(None, n)
+                rest = after[n] if len(after) > n else ""
+                punct = re.search(r"[,.;]*$", words[n - 1]).group(0)   # keep "day, unsure"
+                joined = (text[:m.start()].rstrip() + punct + " " + rest).strip()
+                return joined, when
     return text, None
 
 
@@ -571,16 +590,22 @@ def parse_message(subject, body, sent_at=None, codes=None):
             return Parsed(entries)
 
     for line in _body_lines(body):
+        lead_at = None
+        if line.lstrip().startswith("@"):  # "@10/23 Food: toast"
+            rest, lead_at = split_time(line.strip(), sent_at)
+            if lead_at:
+                line = rest
         m = _LINE_RE.match(line)
         cat = category_for(m.group(1)) if m else None
         if cat:
             value, at = split_time(_clean(m.group(2)), sent_at)
             if _clean(value):
-                add(cat, _labelled(m.group(1), _clean(value)), at)
+                add(cat, _labelled(m.group(1), _clean(value)), at or lead_at)
             continue
         if line.lstrip().startswith(">"):
             continue  # codes and one-offs only count in your own text, not quoted mail
         text, at = split_time(line.strip(), sent_at)
+        at = at or lead_at
         coded = parse_codes(text, codes)
         if coded:
             for cat, value in coded:

@@ -6,7 +6,7 @@ import re
 import sqlite3
 from contextlib import closing
 
-from .parser import SEVERITY_CATEGORIES, _quantity, caffeine_mg, normalize, severity_of
+from .parser import SEVERITY_CATEGORIES, _quantity, caffeine_mg, normalize, severity_of, split_time
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS entries (
@@ -88,6 +88,22 @@ class Store:
                 c.execute("ALTER TABLE entries ADD COLUMN created_at TEXT")
                 c.execute("UPDATE entries SET created_at = logged_at")
                 c.commit()
+        self.fix_inline_times()
+
+    def fix_inline_times(self):
+        """Older versions only read @time at the end of an entry, so "out all day
+        @10/23, unsure..." was logged for the day it was sent with the @ kept in
+        the text. Move such entries to the time they name."""
+        with self._conn() as c, c:
+            rows = c.execute("SELECT id, logged_at, category, value FROM entries"
+                             " WHERE value LIKE '%@%'").fetchall()
+            for entry_id, logged_at, cat, value in rows:
+                text, at = split_time(value, dt.datetime.fromisoformat(logged_at))
+                if not at or not text:
+                    continue
+                sev = severity_of(text) if cat in SEVERITY_CATEGORIES else None
+                c.execute("UPDATE entries SET logged_at = ?, value = ?, severity = ? WHERE id = ?",
+                          (_iso(at), text, sev, entry_id))
 
     def _conn(self):
         # A fresh connection per call keeps this safe to use from the GUI and

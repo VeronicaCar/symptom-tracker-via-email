@@ -73,14 +73,18 @@ function uninstall() {
 /** Run to get one reminder right now, to see what it looks like. */
 function sendTestReminder() {
   checkConfig_();
+  Logger.log('Building a test reminder...');
   sendReminder_(new Date(), todayMode_(new Date()), true);
+  Logger.log('Sent to ' + CONFIG.REMIND_TO + '.');
 }
 
 /** Run to email yourself the "Today so far" summary right now. */
 function sendTestToday() {
   checkConfig_();
+  Logger.log('Building today so far...');
   const s = todaySoFar_(new Date());
   GmailApp.sendEmail(CONFIG.REMIND_TO, s.subject, s.text, { htmlBody: s.html });
+  Logger.log('Sent to ' + CONFIG.REMIND_TO + '.');
 }
 
 /** Called every few minutes by the trigger that `install` creates. */
@@ -191,14 +195,34 @@ const OZ_PER_ = { oz: 1, ounce: 1, ounces: 1, cup: 8, cups: 8, ml: 1 / 29.57, l:
 const RESCUE_RE_ = /^(rescue( meds?| medication)?|meds?|medication|triptan|sumatriptan|rizatriptan|ubrelvy|nurtec|tylenol|excedrin|meclizine|zofran|dramamine|bonine|ondansetron|r)\b/i;
 const ADVIL_RE_ = /^(advil|ibuprofen|motrin|a\d)/i;
 
-/** Your own lines from an email: the subject, then the body down to any quoted reply. */
+/**
+ * Your own lines from an email: the subject, then the body down to any quoted reply.
+ * Lines backdated to another day are left out, and so is the whole email when its
+ * subject is (e.g. "FOOD @10/23" with "banana" underneath).
+ */
 function myLines_(message) {
-  const lines = [message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '')];
+  const sent = message.getDate();
+  const subject = message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim();
+  if (otherDay_(subject, sent)) return [];
+  const lines = [subject];
   for (const line of message.getPlainBody().split(/\r?\n/)) {
     if (/^\s*>/.test(line) || /^On .+wrote:\s*$/.test(line.trim()) || line.trim() === '--') break;
     lines.push(line);
   }
-  return lines.map(l => l.trim()).filter(l => l && !/\b(yesterday|last night)\b|\bon\s+\d{1,2}\/\d{1,2}|@\s*\d{1,2}\/\d{1,2}/i.test(l));
+  return lines.map(l => l.trim()).filter(l => l && !otherDay_(l, sent));
+}
+
+const MONTHS_ = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** True if a line is backdated to a day other than the one it was sent: @yesterday, @10/23, on oct 23. */
+function otherDay_(line, sent) {
+  if (/@\s*(yesterday|yday|yest|last night)\b|\b(yesterday|last night)\b/i.test(line)) return true;
+  const sentMD = Utilities.formatDate(sent, Session.getScriptTimeZone(), 'M/d');
+  const num = line.match(/(?:@|\bon\s)\s*(\d{1,2})\/(\d{1,2})\b/i);
+  if (num) return Number(num[1]) + '/' + Number(num[2]) !== sentMD;
+  const named = line.match(/(?:@|\bon\s)\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b/i);
+  if (named) return (MONTHS_.indexOf(named[1].toLowerCase()) + 1) + '/' + Number(named[2]) !== sentMD;
+  return false;
 }
 
 function waterOz_(line) {
@@ -213,26 +237,45 @@ function waterOz_(line) {
   return total;
 }
 
-/** Messages you sent since a given time, oldest first. */
+/**
+ * Messages you sent since a given time, oldest first. Gmail calls are slow, so a
+ * run fetches each stretch of mail once (in one batch) and reuses it.
+ */
+let fetched_ = null;   // {since, messages} for this run
 function myMessagesSince_(since) {
-  const q = fromMe_() + ' after:' + Math.floor(since.getTime() / 1000);
-  const mine = CONFIG.MY_ADDRESSES.map(a => a.toLowerCase());
-  const out = [];
-  GmailApp.search(q, 0, 200).forEach(thread => thread.getMessages().forEach(m => {
-    const from = (m.getFrom().match(/<([^>]+)>/) || [null, m.getFrom()])[1].toLowerCase();
-    if (m.getDate() >= since && mine.indexOf(from) >= 0) out.push(m);
-  }));
-  return out.sort((a, b) => a.getDate() - b.getDate());
+  if (!fetched_ || since < fetched_.since) {
+    const q = fromMe_() + ' after:' + Math.floor(since.getTime() / 1000);
+    const mine = CONFIG.MY_ADDRESSES.map(a => a.toLowerCase());
+    const out = [];
+    GmailApp.getMessagesForThreads(GmailApp.search(q, 0, 200)).forEach(msgs => msgs.forEach(m => {
+      const date = m.getDate();
+      if (date < since) return;
+      const from = (m.getFrom().match(/<([^>]+)>/) || [null, m.getFrom()])[1].toLowerCase();
+      if (mine.indexOf(from) >= 0) out.push(m);
+    }));
+    out.sort((a, b) => a.getDate() - b.getDate());
+    fetched_ = { since: since, messages: out };
+  }
+  return fetched_.messages.filter(m => m.getDate() >= since);
 }
 
-/** {waterOz, rescueDays, advilDays} for today and this month. */
+/**
+ * {waterOz, rescueDays, advilDays} for today and this month. Earlier days of the
+ * month are remembered, so only today's emails are read on each run.
+ */
 function totals_(now) {
   const tz = Session.getScriptTimeZone();
   const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
-  const monthStart = atTime_(new Date(Utilities.formatDate(now, tz, 'yyyy-MM-01') + 'T12:00:00Z'), '00:00');
+  const month = today.slice(0, 7);
+  const props = PropertiesService.getScriptProperties();
+  let saved = null;
+  try {
+    saved = JSON.parse(props.getProperty('med days ' + month) || 'null');
+  } catch (e) {}
+  if (!saved || saved.through > today) saved = { through: month + '-01', rescue: [], advil: [] };
   let waterOz = 0;
-  const rescue = new Set(), advil = new Set();
-  myMessagesSince_(monthStart).forEach(m => {
+  const rescue = new Set(saved.rescue), advil = new Set(saved.advil);
+  myMessagesSince_(atTime_(new Date(saved.through + 'T12:00:00Z'), '00:00')).forEach(m => {
     const day = Utilities.formatDate(m.getDate(), tz, 'yyyy-MM-dd');
     myLines_(m).forEach(line => {
       if (day === today) waterOz += waterOz_(line);
@@ -242,6 +285,15 @@ function totals_(now) {
       if (ADVIL_RE_.test(body)) advil.add(day);
     });
   });
+  // Days before today are finished, so remember them.
+  props.setProperty('med days ' + month, JSON.stringify({
+    through: today,
+    rescue: Array.from(rescue).filter(d => d < today),
+    advil: Array.from(advil).filter(d => d < today),
+  }));
+  Object.keys(props.getProperties())
+    .filter(k => k.indexOf('med days ') === 0 && k !== 'med days ' + month)
+    .forEach(k => props.deleteProperty(k));
   return { waterOz: Math.round(waterOz), rescueDays: rescue.size, advilDays: advil.size };
 }
 
@@ -399,6 +451,41 @@ function todaysRatings_(messages, tz) {
   return out;
 }
 
+/**
+ * What an email logged, tidied for reading: lines your mail app wrapped are joined
+ * back up, and a bare subject like FOOD is put together with what you wrote under
+ * it ("Food: banana"). The LOG and check-in subjects and blank template lines are left out.
+ */
+function logEntries_(message) {
+  const lines = myLines_(message);
+  let subject = message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim();
+  if (lines[0] === subject) lines.shift();
+  else subject = '';
+  subject = subject.replace(/^@\s*\S+(\s+\d{1,2}(:\d\d)?\s*(am|pm))?\s+/i, '');   // "@2pm FOOD" -> "FOOD"
+  const body = [];
+  lines.forEach(line => {
+    if (/^[a-z ]+:\s*$/i.test(line) || COMMAND_RE_.test(line)) return;
+    const prev = body[body.length - 1];
+    // Mail apps wrap long lines at about 70 characters; a long line followed by
+    // one that isn't a new "Label:" line or code is a single wrapped sentence.
+    if (prev && prev.length >= 60 && !/^[A-Za-z ]+:/.test(line) && !/^[A-Z]{2,}\b/.test(line)) {
+      body[body.length - 1] = prev + ' ' + line;
+    } else {
+      body.push(line);
+    }
+  });
+  const pretty = s => s.replace(/^([A-Z][A-Z ]*[A-Z])\b/, w => w.charAt(0) + w.slice(1).toLowerCase())
+                       .replace(/^Misc\b/, 'Note')
+                       .replace(/^a(\d+(?:\.\d+)?)$/i, 'Advil x$1');   // short code a2
+  if (/^(log|symptom check-in.*)$/i.test(subject) || COMMAND_RE_.test(subject) || !subject) {
+    return body.map(pretty);
+  }
+  if (/^[a-z ]+$/i.test(subject) && body.length) {   // a bare label, e.g. FOOD + "banana"
+    return [pretty(subject.trim()) + ': ' + body.join(' ')];
+  }
+  return [pretty(subject)].concat(body.map(pretty));
+}
+
 /** {subject, text, html} summarising today's logs. */
 function todaySoFar_(now) {
   const tz = Session.getScriptTimeZone();
@@ -406,14 +493,35 @@ function todaySoFar_(now) {
   const t = totals_(now);
   const goal = CONFIG.WATER_GOAL_OZ;
   const ratings = todaysRatings_(messages, tz);
-  const meds = [], logged = [];
+  // Sort what you logged into a few groups. Water and ratings are already in the
+  // totals above, so only what they leave out is listed.
+  const meds = [], food = [], caffeine = [], electrolytes = [], notes = [];
   messages.forEach(m => {
     const time = Utilities.formatDate(m.getDate(), tz, 'h:mm a');
-    myLines_(m).forEach(line => {
-      if (/^symptom check-in/i.test(line) || COMMAND_RE_.test(line) || /^[a-z ]+:\s*$/i.test(line)) return;
-      const shown = line.replace(/^a(\d+(?:\.\d+)?)$/i, 'Advil x$1');   // short code a2
-      logged.push(time + '  ' + shown);
-      if (RESCUE_RE_.test(line) || ADVIL_RE_.test(line)) meds.push(time + '  ' + shown);
+    logEntries_(m).forEach(entry => {
+      const parts = entry.match(/^([A-Za-z][A-Za-z ]*?)\s*:\s*(.*)$/) ||
+                    entry.match(/^(food|caffeine|electrolytes|note|nap|left early|water|sinus|migraine|dizzy|fatigue)\b\s*(.*)$/i);
+      const label = parts ? parts[1].toLowerCase() : '';
+      const value = parts ? parts[2].trim() : entry;
+      if (RESCUE_RE_.test(entry) || ADVIL_RE_.test(entry)) {
+        meds.push((label === 'rescue meds' ? value : entry.replace(/^advil:?\s*x?/i, 'Advil ')) + ' (' + time + ')');
+      } else if (/^([a-z]{1,3}\d+(\.\d+)?\s*)+$/i.test(entry) || waterOz_(entry) > 0 || /^(water|h2o)$/.test(label)) {
+        return;   // short codes and water: counted above
+      } else if (!value) {
+        return;
+      } else if (/^(sinus( pain)?|migraine|dizzy|dizziness|fatigue)$/.test(label) && /^\d+(\.\d+)?\s*\/\s*10$/.test(value)) {
+        return;   // a rating: shown above
+      } else if (label === 'food') {
+        food.push(value + ' (' + time + ')');
+      } else if (label === 'caffeine') {
+        caffeine.push(value + ' (' + time + ')');
+      } else if (label === 'electrolytes') {
+        electrolytes.push(value + ' (' + time + ')');
+      } else if (/^(note|misc|symptoms?)$/.test(label)) {
+        notes.push(time + '  ' + value);
+      } else {
+        notes.push(time + '  ' + entry);
+      }
     });
   });
 
@@ -428,7 +536,10 @@ function todaySoFar_(now) {
   } else {
     lines.push('No symptom ratings logged yet today.');
   }
-  lines.push('Meds today: ' + (meds.length ? meds.map(x => x.replace(/^\S+ \S+\s+/, '')).join('; ') : 'none logged'));
+  lines.push('Meds today: ' + (meds.length ? meds.join('; ') : 'none logged'));
+  if (food.length) lines.push('Food: ' + food.join(', '));
+  if (caffeine.length) lines.push('Caffeine: ' + caffeine.join(', '));
+  if (electrolytes.length) lines.push('Electrolytes: ' + electrolytes.join(', '));
   lines.push('This month: rescue meds on ' + t.rescueDays + ' day' + (t.rescueDays === 1 ? '' : 's') +
              ', Advil on ' + t.advilDays + ' day' + (t.advilDays === 1 ? '' : 's'));
   const latest = {};
@@ -439,7 +550,7 @@ function todaySoFar_(now) {
   const subject = 'Today so far (' + Utilities.formatDate(now, tz, 'h:mm a') + ')';
   const text = 'Today so far, ' + dateLabel + '\n\n' + lines.join('\n') +
                (ideas.length ? '\n\nMight help:\n' + ideas.map(i => '- ' + i).join('\n') : '') +
-               '\n\nEverything you logged today:\n' + (logged.length ? logged.join('\n') : 'Nothing yet.') + '\n';
+               (notes.length ? '\n\nNotes:\n' + notes.join('\n') : '') + '\n';
   const progress = goal ? Math.min(t.waterOz / goal, 1) : 0;
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const html =
@@ -452,13 +563,12 @@ function todaySoFar_(now) {
     lines.slice(1).map(l => '<p style="margin:2px 0">' + esc(l) + '</p>').join('') +
     (ideas.length ? '<p style="margin:10px 0 2px"><b>Might help</b></p><ul style="margin-top:2px">' +
                     ideas.map(i => '<li style="margin-bottom:4px">' + esc(i) + '</li>').join('') + '</ul>' : '') +
-    '<p style="margin:12px 0 2px"><b>Everything you logged today</b></p>' +
-    (logged.length ? '<table style="border-collapse:collapse;font-size:14px">' +
-      logged.map(l => {
+    (notes.length ? '<p style="margin:12px 0 2px"><b>Notes</b></p><table style="border-collapse:collapse;font-size:14px">' +
+      notes.map(l => {
         const sp = l.indexOf('  ');
         return '<tr><td style="padding:2px 10px 2px 0;color:#555;white-space:nowrap;vertical-align:top">' +
                esc(l.slice(0, sp)) + '</td><td style="padding:2px 0">' + esc(l.slice(sp + 2)) + '</td></tr>';
-      }).join('') + '</table>' : '<p style="color:#555">Nothing yet.</p>') + '</div>';
+      }).join('') + '</table>' : '') + '</div>';
   return { subject: subject, text: text, html: html };
 }
 

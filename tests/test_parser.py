@@ -228,6 +228,27 @@ class BackdateTests(unittest.TestCase):
         self.assertEqual(times("MISC put on sunglasses"), [None])
         self.assertEqual(times("MIGRAINE 6/10 on 2/30", sent_at=later), [None])  # not a real date
 
+    def test_time_first(self):
+        later = dt.datetime(2026, 10, 26, 20, 30)
+        self.assertEqual(p("@10/23 MISC out all day", sent_at=later), [("misc", "out all day")])
+        self.assertEqual(times("@10/23 MISC out all day", sent_at=later), [dt.datetime(2026, 10, 23, 12, 0)])
+        self.assertEqual(times("@10/23 2pm w16", sent_at=later), [dt.datetime(2026, 10, 23, 14, 0)])
+        self.assertEqual(times("@ yesterday FOOD", "banana\n", sent_at=later), [dt.datetime(2026, 10, 25, 12, 0)])
+        self.assertEqual(p("LOG", "@10/23 Food: toast\n@10/23 w16\n", sent_at=later),
+                         [("food", "toast"), ("water", "16oz")])
+        self.assertEqual(times("LOG", "@10/23 Food: toast\n", sent_at=later), [dt.datetime(2026, 10, 23, 12, 0)])
+        self.assertEqual(p("@someone MISC hi"), [])
+
+    def test_time_in_the_middle(self):
+        later = dt.datetime(2026, 10, 26, 20, 30)
+        self.assertEqual(p("MISC out all day @10/23, unsure if flu shot", sent_at=later),
+                         [("misc", "out all day, unsure if flu shot")])
+        self.assertEqual(times("MISC out all day @10/23, unsure if flu shot", sent_at=later),
+                         [dt.datetime(2026, 10, 23, 12, 0)])
+        self.assertEqual(times("LOG", "Food: pizza @10/24 6pm with friends\n", sent_at=later),
+                         [dt.datetime(2026, 10, 24, 18, 0)])
+        self.assertEqual(p("MISC emailed bob@x.com today"), [("misc", "emailed bob@x.com today")])
+
     def test_no_space_before_at(self):
         self.assertEqual(p("LOG", "Symptoms: extreme vertigo 8/10@ 12 pm\n"),
                          [("symptoms", "extreme vertigo 8/10")])
