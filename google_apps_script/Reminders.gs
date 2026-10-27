@@ -493,12 +493,35 @@ function todaySoFar_(now) {
   const t = totals_(now);
   const goal = CONFIG.WATER_GOAL_OZ;
   const ratings = todaysRatings_(messages, tz);
-  const meds = [], logged = [];
+  // Sort what you logged into a few groups. Water and ratings are already in the
+  // totals above, so only what they leave out is listed.
+  const meds = [], food = [], caffeine = [], electrolytes = [], notes = [];
   messages.forEach(m => {
     const time = Utilities.formatDate(m.getDate(), tz, 'h:mm a');
-    logEntries_(m).forEach((entry, i) => {
-      logged.push((i ? '' : time) + '  ' + entry);   // time only on an email's first entry
-      if (RESCUE_RE_.test(entry) || ADVIL_RE_.test(entry)) meds.push(entry);
+    logEntries_(m).forEach(entry => {
+      const parts = entry.match(/^([A-Za-z][A-Za-z ]*?)\s*:\s*(.*)$/) ||
+                    entry.match(/^(food|caffeine|electrolytes|note|nap|left early|water|sinus|migraine|dizzy|fatigue)\b\s*(.*)$/i);
+      const label = parts ? parts[1].toLowerCase() : '';
+      const value = parts ? parts[2].trim() : entry;
+      if (RESCUE_RE_.test(entry) || ADVIL_RE_.test(entry)) {
+        meds.push((label === 'rescue meds' ? value : entry.replace(/^advil:?\s*x?/i, 'Advil ')) + ' (' + time + ')');
+      } else if (/^([a-z]{1,3}\d+(\.\d+)?\s*)+$/i.test(entry) || waterOz_(entry) > 0 || /^(water|h2o)$/.test(label)) {
+        return;   // short codes and water: counted above
+      } else if (!value) {
+        return;
+      } else if (/^(sinus( pain)?|migraine|dizzy|dizziness|fatigue)$/.test(label) && /^\d+(\.\d+)?\s*\/\s*10$/.test(value)) {
+        return;   // a rating: shown above
+      } else if (label === 'food') {
+        food.push(value + ' (' + time + ')');
+      } else if (label === 'caffeine') {
+        caffeine.push(value + ' (' + time + ')');
+      } else if (label === 'electrolytes') {
+        electrolytes.push(value + ' (' + time + ')');
+      } else if (/^(note|misc|symptoms?)$/.test(label)) {
+        notes.push(time + '  ' + value);
+      } else {
+        notes.push(time + '  ' + entry);
+      }
     });
   });
 
@@ -514,6 +537,9 @@ function todaySoFar_(now) {
     lines.push('No symptom ratings logged yet today.');
   }
   lines.push('Meds today: ' + (meds.length ? meds.join('; ') : 'none logged'));
+  if (food.length) lines.push('Food: ' + food.join(', '));
+  if (caffeine.length) lines.push('Caffeine: ' + caffeine.join(', '));
+  if (electrolytes.length) lines.push('Electrolytes: ' + electrolytes.join(', '));
   lines.push('This month: rescue meds on ' + t.rescueDays + ' day' + (t.rescueDays === 1 ? '' : 's') +
              ', Advil on ' + t.advilDays + ' day' + (t.advilDays === 1 ? '' : 's'));
   const latest = {};
@@ -524,7 +550,7 @@ function todaySoFar_(now) {
   const subject = 'Today so far (' + Utilities.formatDate(now, tz, 'h:mm a') + ')';
   const text = 'Today so far, ' + dateLabel + '\n\n' + lines.join('\n') +
                (ideas.length ? '\n\nMight help:\n' + ideas.map(i => '- ' + i).join('\n') : '') +
-               '\n\nEverything you logged today:\n' + (logged.length ? logged.map(l => l.replace(/^  /, '          ')).join('\n') : 'Nothing yet.') + '\n';
+               (notes.length ? '\n\nNotes:\n' + notes.join('\n') : '') + '\n';
   const progress = goal ? Math.min(t.waterOz / goal, 1) : 0;
   const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
   const html =
@@ -537,13 +563,12 @@ function todaySoFar_(now) {
     lines.slice(1).map(l => '<p style="margin:2px 0">' + esc(l) + '</p>').join('') +
     (ideas.length ? '<p style="margin:10px 0 2px"><b>Might help</b></p><ul style="margin-top:2px">' +
                     ideas.map(i => '<li style="margin-bottom:4px">' + esc(i) + '</li>').join('') + '</ul>' : '') +
-    '<p style="margin:12px 0 2px"><b>Everything you logged today</b></p>' +
-    (logged.length ? '<table style="border-collapse:collapse;font-size:14px">' +
-      logged.map(l => {
+    (notes.length ? '<p style="margin:12px 0 2px"><b>Notes</b></p><table style="border-collapse:collapse;font-size:14px">' +
+      notes.map(l => {
         const sp = l.indexOf('  ');
         return '<tr><td style="padding:2px 10px 2px 0;color:#555;white-space:nowrap;vertical-align:top">' +
                esc(l.slice(0, sp)) + '</td><td style="padding:2px 0">' + esc(l.slice(sp + 2)) + '</td></tr>';
-      }).join('') + '</table>' : '<p style="color:#555">Nothing yet.</p>') + '</div>';
+      }).join('') + '</table>' : '') + '</div>';
   return { subject: subject, text: text, html: html };
 }
 
