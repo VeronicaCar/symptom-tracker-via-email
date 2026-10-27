@@ -451,3 +451,70 @@ def doctor_report(cfg, store, start, end):
 <th>Electrolytes</th><th>Caffeine</th><th>Vitals</th><th>Weather</th><th>Food &amp; notes</th></tr>{daily_rows}</table>
 </body></html>
 """
+
+
+# ---- "Today so far" -------------------------------------------------------------
+
+def today_so_far(cfg, store, now=None):
+    """(subject, text, html) summarising today's log, sent when you email TODAY."""
+    from . import suggestions
+    now = now or dt.datetime.now()
+    today = now.date()
+    goal = cfg.get("water_goal_oz", 64)
+    rows = store.between(today, today + DAY)
+    totals = store.day_totals(today)
+
+    ratings = {}
+    for logged_at, cat, value, sev in rows:
+        if sev is None:
+            continue
+        for name, hit in (("Migraine", cat == "symptoms" and MIGRAINE_RE.search(value)),
+                          ("Dizziness", cat == "symptoms" and DIZZY_RE.search(value)),
+                          ("Sinus pain", cat == "sinus"), ("Fatigue", cat == "fatigue")):
+            if hit:
+                r = ratings.setdefault(name, {"peak": 0})
+                r.update(latest=sev, at=dt.datetime.fromisoformat(logged_at), peak=max(r["peak"], sev))
+    meds = [v for _, cat, v, _ in rows if cat in ("rescue_meds", "advil")]
+
+    def clock(t):
+        return t.strftime("%I:%M %p").lstrip("0")
+
+    lines = [f"Water: {totals['water']:.0f} of {goal} oz" + (" (goal reached!)" if totals["water"] >= goal else "")]
+    for name, r in ratings.items():
+        peak = f" (peaked at {r['peak']:g}/10)" if r["peak"] > r["latest"] else ""
+        lines.append(f"{name}: {r['latest']:g}/10 at {clock(r['at'])}{peak}")
+    if not ratings:
+        lines.append("No symptom ratings logged yet today.")
+    if totals["caffeine_mg"]:
+        lines.append(f"Caffeine: {totals['caffeine_mg']:.0f} mg")
+    lines.append("Meds today: " + ("; ".join(meds) if meds else "none logged"))
+    rescue = store.rescue_days(today.year, today.month)
+    advil = store.days_with("advil", today.year, today.month)
+    lines.append(f"This month: rescue meds on {rescue} day{'' if rescue == 1 else 's'}, "
+                 f"Advil on {advil} day{'' if advil == 1 else 's'}")
+    ideas = suggestions.for_today(store, today)
+    logged = [(clock(dt.datetime.fromisoformat(t)), f"{LABELS.get(c, c)}: {v}") for t, c, v, _ in rows]
+
+    date_label = f"{now:%A}, {now:%b} {now.day}"
+    subject = f"Today so far ({clock(now)})"
+    text = (f"Today so far, {date_label}\n\n" + "\n".join(lines)
+            + ("\n\nMight help:\n" + "\n".join(f"- {i}" for i in ideas) if ideas else "")
+            + "\n\nEverything you logged today:\n"
+            + ("\n".join(f"{t}  {e}" for t, e in logged) if logged else "Nothing yet.") + "\n")
+    progress = min(totals["water"] / goal, 1) if goal else 0
+    html = (
+        "<div style='font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c'>"
+        f"<p style='margin-bottom:6px'><b>Today so far</b> <span style='color:#555'>{date_label}</span></p>"
+        f"<p style='margin:2px 0'>{escape(lines[0])}</p>"
+        "<div style='background:#e3ecef;border-radius:6px;height:10px;width:260px;margin:4px 0 10px'>"
+        f"<div style='background:#2e86c1;border-radius:6px;height:10px;width:{progress * 100:.0f}%'></div></div>"
+        + "".join(f"<p style='margin:2px 0'>{escape(l)}</p>" for l in lines[1:])
+        + ("<p style='margin:10px 0 2px'><b>Might help</b></p><ul style='margin-top:2px'>"
+           + "".join(f"<li style='margin-bottom:4px'>{escape(i)}</li>" for i in ideas) + "</ul>" if ideas else "")
+        + "<p style='margin:12px 0 2px'><b>Everything you logged today</b></p>"
+        + ("<table style='border-collapse:collapse;font-size:14px'>" + "".join(
+            f"<tr><td style='padding:2px 10px 2px 0;color:#555;white-space:nowrap'>{t}</td>"
+            f"<td style='padding:2px 0'>{escape(e)}</td></tr>" for t, e in logged) + "</table>"
+           if logged else "<p style='color:#555'>Nothing yet.</p>")
+        + "</div>")
+    return subject, text, html

@@ -75,11 +75,23 @@ function sendTestReminder() {
   sendReminder_(new Date(), todayMode_(new Date()), true);
 }
 
+/** Run to email yourself the "Today so far" summary right now. */
+function sendTestToday() {
+  checkConfig_();
+  const s = todaySoFar_(new Date());
+  GmailApp.sendEmail(CONFIG.REMIND_TO, s.subject, s.text, { htmlBody: s.html });
+}
+
 /** Called every few minutes by the trigger that `install` creates. */
 function tick() {
   checkConfig_();   // shows up under Executions as a failed run until fixed
   const now = new Date();
   const tz = Session.getScriptTimeZone();
+  try {
+    answerTodayRequests_(now);
+  } catch (e) {  // never let this stop reminders
+    Logger.log('Today-so-far reply failed: ' + e);
+  }
   if (CONFIG.SUGGEST_ON_LOG) {
     try {
       suggestOnNewLogs_(now);
@@ -235,11 +247,12 @@ function totals_(now) {
 // ---- suggestions ---------------------------------------------------------------
 
 /** Severity per SUGGESTIONS rule found in some lines: {Migraine: 4, ...}. Highest wins. */
-function severities_(lines) {
+function severities_(lines, rules) {
+  rules = rules || SUGGESTIONS;
   const found = {};
   lines.forEach(line => {
     line.split(/\s+/).forEach(token => {   // short codes like m4 or s2.5
-      SUGGESTIONS.forEach(rule => {
+      rules.forEach(rule => {
         const m = token.match(rule.code);
         if (m) found[rule.name] = Math.max(found[rule.name] || 0, Number(m[1]));
       });
@@ -250,7 +263,7 @@ function severities_(lines) {
     line.split(/[,;]/).forEach(part => {
       const s = part.match(/(\d+(?:\.\d+)?)\s*\/\s*10\b/);
       if (!s) return;
-      SUGGESTIONS.forEach(rule => {
+      rules.forEach(rule => {
         if (rule.match.test(part)) found[rule.name] = Math.max(found[rule.name] || 0, Number(s[1]));
       });
     });
@@ -344,6 +357,110 @@ function notes_(now) {
            progress: goal ? Math.min(t.waterOz / goal, 1) : 0 };
 }
 
+// ---- "Today so far" ---------------------------------------------------------------
+// Email the tracker with the subject TODAY (or STATUS / SO FAR) to get a summary back.
+
+const TODAY_REQUEST_RE_ = /^(today( so far)?|status|so far|how('?s| is) today( going)?)\??$/i;
+const FATIGUE_RULE_ = { name: 'Fatigue', match: /fatigu|tired|exhaust/i, code: /^f(\d+(?:\.\d+)?)$/i };
+const COMMAND_RE_ = /^(rough( day)?|pause( today)?|no reminders|resume|summary|weekly summary)$/i;
+
+function isTodayRequest_(message) {
+  const s = message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim();
+  return TODAY_REQUEST_RE_.test(s);
+}
+
+function answerTodayRequests_(now) {
+  const props = PropertiesService.getScriptProperties();
+  myMessagesSince_(new Date(now - 30 * 60000)).forEach(m => {
+    if (!isTodayRequest_(m)) return;
+    const key = 'today ' + m.getId();
+    if (props.getProperty(key)) return;
+    props.setProperty(key, Utilities.formatDate(now, 'UTC', 'yyyy-MM-dd'));
+    const s = todaySoFar_(now);
+    m.reply(s.text, { htmlBody: s.html });
+  });
+}
+
+/** Latest and highest rating today per symptom: {Migraine: {latest, peak, at}}. */
+function todaysRatings_(messages, tz) {
+  const rules = SUGGESTIONS.concat([FATIGUE_RULE_]);
+  const out = {};
+  messages.forEach(m => {
+    const found = severities_(myLines_(m), rules);
+    Object.keys(found).forEach(name => {
+      const r = out[name] || { peak: 0 };
+      r.latest = found[name];
+      r.peak = Math.max(r.peak, found[name]);
+      r.at = Utilities.formatDate(m.getDate(), tz, 'h:mm a');
+      out[name] = r;
+    });
+  });
+  return out;
+}
+
+/** {subject, text, html} summarising today's logs. */
+function todaySoFar_(now) {
+  const tz = Session.getScriptTimeZone();
+  const messages = myMessagesSince_(atTime_(now, '00:00')).filter(m => !isTodayRequest_(m));
+  const t = totals_(now);
+  const goal = CONFIG.WATER_GOAL_OZ;
+  const ratings = todaysRatings_(messages, tz);
+  const meds = [], logged = [];
+  messages.forEach(m => {
+    const time = Utilities.formatDate(m.getDate(), tz, 'h:mm a');
+    myLines_(m).forEach(line => {
+      if (/^symptom check-in/i.test(line) || COMMAND_RE_.test(line) || /^[a-z ]+:\s*$/i.test(line)) return;
+      const shown = line.replace(/^a(\d+(?:\.\d+)?)$/i, 'Advil x$1');   // short code a2
+      logged.push(time + '  ' + shown);
+      if (RESCUE_RE_.test(line) || ADVIL_RE_.test(line)) meds.push(time + '  ' + shown);
+    });
+  });
+
+  const lines = [];
+  lines.push('Water: ' + t.waterOz + ' of ' + goal + ' oz' + (t.waterOz >= goal ? ' (goal reached!)' : ''));
+  const names = Object.keys(ratings);
+  if (names.length) {
+    names.forEach(n => {
+      const r = ratings[n];
+      lines.push(n + ': ' + r.latest + '/10 at ' + r.at + (r.peak > r.latest ? ' (peaked at ' + r.peak + '/10)' : ''));
+    });
+  } else {
+    lines.push('No symptom ratings logged yet today.');
+  }
+  lines.push('Meds today: ' + (meds.length ? meds.map(x => x.replace(/^\S+ \S+\s+/, '')).join('; ') : 'none logged'));
+  lines.push('This month: rescue meds on ' + t.rescueDays + ' day' + (t.rescueDays === 1 ? '' : 's') +
+             ', Advil on ' + t.advilDays + ' day' + (t.advilDays === 1 ? '' : 's'));
+  const latest = {};
+  names.forEach(n => { latest[n] = ratings[n].latest; });
+  const ideas = suggestions_(latest, t);
+
+  const dateLabel = Utilities.formatDate(now, tz, 'EEEE, MMM d');
+  const subject = 'Today so far (' + Utilities.formatDate(now, tz, 'h:mm a') + ')';
+  const text = 'Today so far, ' + dateLabel + '\n\n' + lines.join('\n') +
+               (ideas.length ? '\n\nMight help:\n' + ideas.map(i => '- ' + i).join('\n') : '') +
+               '\n\nEverything you logged today:\n' + (logged.length ? logged.join('\n') : 'Nothing yet.') + '\n';
+  const progress = goal ? Math.min(t.waterOz / goal, 1) : 0;
+  const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const html =
+    '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c">' +
+    '<p style="margin-bottom:6px"><b>Today so far</b> <span style="color:#555">' + dateLabel + '</span></p>' +
+    '<p style="margin:2px 0">' + esc(lines[0]) + '</p>' +
+    '<div style="background:#e3ecef;border-radius:6px;height:10px;width:260px;margin:4px 0 10px">' +
+    '<div style="background:#2e86c1;border-radius:6px;height:10px;width:' + Math.round(progress * 100) +
+    '%"></div></div>' +
+    lines.slice(1).map(l => '<p style="margin:2px 0">' + esc(l) + '</p>').join('') +
+    (ideas.length ? '<p style="margin:10px 0 2px"><b>Might help</b></p><ul style="margin-top:2px">' +
+                    ideas.map(i => '<li style="margin-bottom:4px">' + esc(i) + '</li>').join('') + '</ul>' : '') +
+    '<p style="margin:12px 0 2px"><b>Everything you logged today</b></p>' +
+    (logged.length ? '<table style="border-collapse:collapse;font-size:14px">' +
+      logged.map(l => {
+        const sp = l.indexOf('  ');
+        return '<tr><td style="padding:2px 10px 2px 0;color:#555;white-space:nowrap;vertical-align:top">' +
+               esc(l.slice(0, sp)) + '</td><td style="padding:2px 0">' + esc(l.slice(sp + 2)) + '</td></tr>';
+      }).join('') + '</table>' : '<p style="color:#555">Nothing yet.</p>') + '</div>';
+  return { subject: subject, text: text, html: html };
+}
+
 function sendReminder_(at, mode, first) {
   const tracker = Session.getEffectiveUser().getEmail();
   const label = Utilities.formatDate(at, Session.getScriptTimeZone(), 'h:mm a');
@@ -357,8 +474,9 @@ function sendReminder_(at, mode, first) {
                  ['Leaving early', 'LEFT EARLY 2h '], ['Note', 'MISC ']];
   const yesterday = first ? [['Napped yesterday', 'NAP @yesterday'],
                              ['Left early yesterday', 'LEFT EARLY 2h @yesterday']] : [];
-  const day = rough ? [['Resume normal', 'RESUME']]
-                    : [['Rough day (1 check-in)', 'ROUGH DAY'], ['Pause today', 'PAUSE']];
+  const day = (rough ? [['Resume normal', 'RESUME']]
+                     : [['Rough day (1 check-in)', 'ROUGH DAY'], ['Pause today', 'PAUSE']])
+    .concat([['Today so far', 'TODAY']]);
   const buttons = list => list.map(([l, s]) => button_(mailto_(tracker, s), l)).join('');
   let info = { water: '', notes: [], ideas: [], progress: null };
   try {

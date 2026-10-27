@@ -232,8 +232,8 @@ def reminder(cfg, when, store=None, rough=False, first=False):
                "</div></div>")
     yesterday = [("Napped yesterday", "NAP @yesterday"),
                  ("Left early yesterday", "LEFT EARLY 2h @yesterday")] if first else []
-    day_buttons = [("Resume normal", "RESUME")] if rough else [
-        ("Rough day (1 check-in)", "ROUGH DAY"), ("Pause today", "PAUSE")]
+    day_buttons = ([("Resume normal", "RESUME")] if rough else [
+        ("Rough day (1 check-in)", "ROUGH DAY"), ("Pause today", "PAUSE")]) + [("Today so far", "TODAY")]
     html = (
         '<div style="font-family:Segoe UI,Arial,sans-serif;font-size:15px;color:#1c1c1c">'
         f"<p style='margin-bottom:6px'><b>{intro}</b></p>"

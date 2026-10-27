@@ -96,6 +96,13 @@ class Worker(threading.Thread):
                 self.events.put(("mode", None))
             if r["when"] < recent:  # old mail picked up on catch-up; don't act or reply
                 continue
+            if cmd == "today":
+                # The Gmail script answers these when it sends the reminders.
+                if self.cfg.get("send_reminders", True):
+                    subject, text, html = report.today_so_far(self.cfg, self.store)
+                    mailer.send(self.cfg, self._password(), r["sender"], subject, text, html,
+                                in_reply_to=r["message_id"])
+                continue
             if cmd == "summary":
                 self.send_summary(to=r["sender"])
             if cmd or mode == "always" or (mode == "errors" and not r["entries"]):

@@ -403,6 +403,27 @@ class StoreAndReportTests(unittest.TestCase):
                          len({(today - dt.timedelta(days=i)) for i in range(0, 20, 3)
                               if (today - dt.timedelta(days=i)).month == today.month}))
 
+    def test_today_so_far(self):
+        for subject in ("TODAY", "today so far", "Status", "how's today?", "So far"):
+            self.assertEqual(parser.parse_message(subject, "", NOW).command, "today", subject)
+        self.assertIsNone(parser.parse_message("today was rough", "", NOW).command)
+        now = dt.datetime.now().replace(hour=18, minute=0, second=0, microsecond=0)
+        at = lambda h: now.replace(hour=h)
+        self.store.add_entries([("water", "16oz", at(9)), ("symptoms", "migraine 5/10", at(10)),
+                                ("symptoms", "migraine 3/10", at(12)), ("fatigue", "6/10", at(12)),
+                                ("advil", "2", at(13))])
+        subject, text, html = report.today_so_far(dict(config.DEFAULTS), self.store, now)
+        self.assertEqual(subject, "Today so far (6:00 PM)")
+        self.assertIn("Water: 16 of 64 oz", text)
+        self.assertIn("Migraine: 3/10 at 12:00 PM (peaked at 5/10)", text)
+        self.assertIn("Fatigue: 6/10 at 12:00 PM", text)
+        self.assertIn("Meds today: 2 tablets (400 mg)", text)
+        self.assertIn("- Migraine 3/10: try mint gum", text)
+        self.assertIn("9:00 AM  Water: 16oz", text)
+        self.assertIn("<b>Everything you logged today</b>", html)
+        _, _, reminder_html = mailer.reminder(dict(config.DEFAULTS, tracker_email="t@gmail.com"), now, self.store)
+        self.assertIn("subject=TODAY", reminder_html)
+
     def test_suggestions(self):
         from symptom_tracker import suggestions as sg
         found = sg.severities([("sinus", "3/10"), ("symptoms", "dizzy 4/10, headache 2/10")])

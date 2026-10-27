@@ -495,8 +495,16 @@ def _clean(value):
     return "" if _PLACEHOLDER_RE.match(value) else value
 
 
+# Asking for the "Today so far" summary. Matched exactly, so a subject like
+# "today was rough" is still read normally.
+TODAY_REQUESTS = {"today", "today so far", "status", "so far", "how's today", "hows today",
+                  "how is today", "how's today going", "how is today going"}
+
+
 def _command(subject):
-    s = subject.lower().strip(" .!")
+    s = subject.lower().strip(" .!?")
+    if s in TODAY_REQUESTS:
+        return "today"
     for phrase, cmd in COMMANDS:
         if s == phrase or s.startswith(phrase + " "):
             return cmd

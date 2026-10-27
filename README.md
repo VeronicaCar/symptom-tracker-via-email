@@ -177,6 +177,17 @@ warnings, worked out from the log emails in the tracker inbox (a lighter version
 of the desktop app's reading; entries backdated to another day aren't counted). Run `uninstall` to stop it. Your logs are still
 recorded when the PC next starts, as before.
 
+## Today so far
+
+Email the tracker with the subject `TODAY` (also `STATUS`, `SO FAR` or
+`how's today?`) and it replies with how the day is going: water against your
+goal, the latest and peak rating for migraine, dizziness, sinus pain and
+fatigue, meds taken, this month's rescue-med and Advil days, anything from
+"Might help", and everything you logged today with times. Reminders have a
+**Today so far** button that sends the request for you. The Gmail script answers
+within about 10 minutes, even when the PC is off; run `sendTestToday` in the
+script editor to try it.
+
 ## Suggestions
 
 When you log a symptom at these levels, you get ideas for what might help:
