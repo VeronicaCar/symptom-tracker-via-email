@@ -117,6 +117,7 @@ Combine them: `w16 m7` logs both. Change or add codes in Settings → Tracking.
 `WATER 16oz @2pm`, `m6 @yesterday 4pm`, `d5 @mon noon`, `w8 @last night`.
 `LOG @noon` backdates a whole email. A time later than now means yesterday.
 The space before `@` is optional (`8/10@ 12 pm` works).
+The `@` part can also come first: `@10/23 MISC out all day` or `@2pm w16`.
 
 For another day, add a date: `WATER 16oz on 10/2`, `m6 on 10/2 @ 2pm`,
 `ADVIL 2 @oct 2 11am` or `d4 on mon @ 1pm`. With no time, noon is used. A date

@@ -195,14 +195,34 @@ const OZ_PER_ = { oz: 1, ounce: 1, ounces: 1, cup: 8, cups: 8, ml: 1 / 29.57, l:
 const RESCUE_RE_ = /^(rescue( meds?| medication)?|meds?|medication|triptan|sumatriptan|rizatriptan|ubrelvy|nurtec|tylenol|excedrin|meclizine|zofran|dramamine|bonine|ondansetron|r)\b/i;
 const ADVIL_RE_ = /^(advil|ibuprofen|motrin|a\d)/i;
 
-/** Your own lines from an email: the subject, then the body down to any quoted reply. */
+/**
+ * Your own lines from an email: the subject, then the body down to any quoted reply.
+ * Lines backdated to another day are left out, and so is the whole email when its
+ * subject is (e.g. "FOOD @10/23" with "banana" underneath).
+ */
 function myLines_(message) {
-  const lines = [message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '')];
+  const sent = message.getDate();
+  const subject = message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim();
+  if (otherDay_(subject, sent)) return [];
+  const lines = [subject];
   for (const line of message.getPlainBody().split(/\r?\n/)) {
     if (/^\s*>/.test(line) || /^On .+wrote:\s*$/.test(line.trim()) || line.trim() === '--') break;
     lines.push(line);
   }
-  return lines.map(l => l.trim()).filter(l => l && !/\b(yesterday|last night)\b|\bon\s+\d{1,2}\/\d{1,2}|@\s*\d{1,2}\/\d{1,2}/i.test(l));
+  return lines.map(l => l.trim()).filter(l => l && !otherDay_(l, sent));
+}
+
+const MONTHS_ = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+
+/** True if a line is backdated to a day other than the one it was sent: @yesterday, @10/23, on oct 23. */
+function otherDay_(line, sent) {
+  if (/@\s*(yesterday|yday|yest|last night)\b|\b(yesterday|last night)\b/i.test(line)) return true;
+  const sentMD = Utilities.formatDate(sent, Session.getScriptTimeZone(), 'M/d');
+  const num = line.match(/(?:@|\bon\s)\s*(\d{1,2})\/(\d{1,2})\b/i);
+  if (num) return Number(num[1]) + '/' + Number(num[2]) !== sentMD;
+  const named = line.match(/(?:@|\bon\s)\s*(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*(\d{1,2})\b/i);
+  if (named) return (MONTHS_.indexOf(named[1].toLowerCase()) + 1) + '/' + Number(named[2]) !== sentMD;
+  return false;
 }
 
 function waterOz_(line) {
@@ -438,7 +458,10 @@ function todaysRatings_(messages, tz) {
  */
 function logEntries_(message) {
   const lines = myLines_(message);
-  const subject = lines.shift() || '';
+  let subject = message.getSubject().replace(/^\s*((re|fwd?)\s*:\s*)+/i, '').trim();
+  if (lines[0] === subject) lines.shift();
+  else subject = '';
+  subject = subject.replace(/^@\s*\S+(\s+\d{1,2}(:\d\d)?\s*(am|pm))?\s+/i, '');   // "@2pm FOOD" -> "FOOD"
   const body = [];
   lines.forEach(line => {
     if (/^[a-z ]+:\s*$/i.test(line) || COMMAND_RE_.test(line)) return;
