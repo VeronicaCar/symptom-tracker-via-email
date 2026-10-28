@@ -14,7 +14,9 @@ from . import APP_DIR, config, creds, mailer, report, startup, theme
 from . import weather as wx
 from .parser import CATEGORIES, LABELS, split_time
 from .service import DAYS, Worker, next_reminder
+from .dayview import day_blurb, peak_of_day, series_for
 from .store import Store
+from .tabs import ChartsTab, JournalTab
 
 LABEL_TO_CAT = {v: k for k, v in LABELS.items()}
 MODES = {"normal": "Normal", "rough": "Rough day (1 check-in)", "pause": "Paused today"}
@@ -281,8 +283,8 @@ class App(tk.Tk):
     def __init__(self, minimized=False):
         super().__init__()
         self.title(TITLE)
-        self.geometry("920x580")
-        self.minsize(760, 400)
+        self.geometry("1100x760")
+        self.minsize(860, 560)
         theme.apply(self)
         self.store = Store(config.DB_PATH)
         self.events = queue.Queue()
@@ -295,6 +297,7 @@ class App(tk.Tk):
         self._mode = "normal"
         self._loading = self._reload_again = False
         self._shown_rows = None
+        self.day = dt.date.today()   # the day the Journal and Charts tabs show
         self._last_pump = time.monotonic()
         self._build()
         self.refresh()
@@ -343,8 +346,14 @@ class App(tk.Tk):
         ttk.Label(self, textvariable=self.conditions, style="Muted.TLabel",
                   padding=(12, 2, 12, 4)).pack(fill="x")
 
-        body = ttk.Frame(self, padding=(12, 4))
-        body.pack(fill="both", expand=True)
+        tabs = ttk.Notebook(self, padding=(12, 4))
+        tabs.pack(fill="both", expand=True)
+        self.journal = JournalTab(tabs, self.pick_day)
+        self.charts = ChartsTab(tabs)
+        body = ttk.Frame(tabs, padding=(0, 6, 0, 0))
+        tabs.add(self.journal, text="Journal")
+        tabs.add(self.charts, text="Charts")
+        tabs.add(body, text="All entries")
         cols = ("when", "category", "value", "source")
         self.tree = ttk.Treeview(body, columns=cols, show="headings", selectmode="browse")
         for col, text, width, stretch in [("when", "When", 160, False), ("category", "Category", 110, False),
@@ -370,9 +379,19 @@ class App(tk.Tk):
         cat = LABEL_TO_CAT.get(self.filter.get())
         threading.Thread(target=self._load_view, args=(cat,), daemon=True).start()
 
+    def pick_day(self, day):
+        self.day = day
+        self.refresh()
+
     def _load_view(self, cat):
         try:
             today = dt.date.today()
+            day = self.day
+            # Everything from the last 60 days, for the day list and the 14-day map.
+            by_day = {}
+            for row in self.store.between(today - dt.timedelta(days=59), today + dt.timedelta(days=1)):
+                by_day.setdefault(dt.date.fromisoformat(row[0][:10]), []).append(row)
+            day_rows = by_day.get(day) or self.store.between(day, day + dt.timedelta(days=1))
             w = self.store.weather(today - dt.timedelta(days=1), today)
             view = {
                 "rows": self.store.recent(category=cat),
@@ -383,6 +402,13 @@ class App(tk.Tk):
                     w.get(str(today)), w.get(str(today - dt.timedelta(days=1))))),
                 "pollen": self.store.pollen(today, today).get(str(today)),
                 "mode": self.store.day_mode(),
+                "days": [(d, len(rows), day_blurb(rows)) for d, rows in
+                         sorted(by_day.items(), reverse=True)],
+                "day": day,
+                "day_rows": day_rows,
+                "day_totals": self.store.day_totals(day),
+                "heat": [(d, peak_of_day(by_day.get(d, []))) for d in
+                         (today - dt.timedelta(days=13 - i) for i in range(14))],
             }
             self.events.put(("view", view))
         except Exception as e:
@@ -422,8 +448,43 @@ class App(tk.Tk):
         bits = (([f"Weather: {view['weather']}"] if view["weather"] else [])
                 + ([f"Pollen: {view['pollen']}"] if view["pollen"] else []))
         self.conditions.set("   ·   ".join(bits))
+        self._show_day(view, cfg, rescue)
         self._mode = view["mode"]
         self.mode.set(MODES[view["mode"]])
+
+    def _show_day(self, view, cfg, rescue):
+        """Fill the Journal and Charts tabs for the chosen day."""
+        day, t = view["day"], view["day_totals"]
+        days = view["days"]
+        if day not in [d for d, _, _ in days]:
+            days = sorted(days + [(day, len(view["day_rows"]), "")], reverse=True)
+        self.journal.show_days(days, day)
+        goal = cfg["water_goal_oz"]
+        peaks = {}
+        for _, cat, value, sev in view["day_rows"]:
+            if sev is not None:
+                name = series_for(cat, value)
+                peaks[name] = max(peaks.get(name, 0), sev)
+        chips = [(f"Water {t['water']:.0f} / {goal} oz" + (" ✓" if t["water"] >= goal else ""),
+                  t["water"] >= goal)]
+        if t["caffeine_mg"]:
+            chips.append((f"Caffeine {t['caffeine_mg']:.0f} mg", False))
+        if t["electrolytes"]:
+            chips.append((f"Electrolytes {t['electrolytes']:g}", False))
+        chips += [(f"{name} peak {sev:g}/10", False) for name, sev in sorted(peaks.items())]
+        self.journal.show_day(day, view["day_rows"], chips)
+
+        caffeine = (f"{t['caffeine_mg']:.0f} mg" if t["caffeine_mg"] else f"{t['caffeine']:g}")
+        tiles = [
+            ("Water", f"{t['water']:.0f} oz", t["water"] / goal if goal else None,
+             theme.KIND_COLORS["water"], f"Goal {goal} oz"),
+            ("Caffeine", caffeine, t["caffeine_mg"] / 400 if t["caffeine_mg"] else None,
+             theme.KIND_COLORS["caffeine"], "Limit 400 mg"),
+            ("Electrolytes", f"{t['electrolytes']:g}", None, theme.ACCENT, "Servings"),
+            ("Rescue-med days", f"{rescue} / 10", rescue / 10, theme.KIND_COLORS["med"], "This month"),
+            ("Advil days", f"{view['advil']} / 15", view["advil"] / 15, theme.KIND_COLORS["med"], "This month"),
+        ]
+        self.charts.show(day, view["day_rows"], tiles, view["heat"])
 
     def _status_line(self, lead):
         cfg = self.worker.cfg

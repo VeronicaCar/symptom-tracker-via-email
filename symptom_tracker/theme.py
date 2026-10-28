@@ -4,15 +4,25 @@ import ctypes
 import sys
 from tkinter import ttk
 
-BG = "#1e1f22"
-SURFACE = "#2b2d31"
-RAISED = "#383a40"
-BORDER = "#45474d"
-TEXT = "#e6e6e6"
-MUTED = "#9a9ca3"
-ACCENT = "#3d8b75"
-ACCENT_HOVER = "#4aa38a"
-SELECT = "#2f5f53"
+# Kimbie Dark
+BG = "#221a0f"
+SURFACE = "#362712"
+RAISED = "#423523"
+BORDER = "#5a4a37"
+TEXT = "#d3af86"
+BRIGHT = "#e8cfa8"
+MUTED = "#b08a5c"
+ACCENT = "#889b4a"
+ACCENT_HOVER = "#9db15a"
+SELECT = "#84613d"
+ACTIVE = "#4d3d28"
+
+# Tag and chart colors (see dayview.KIND and dayview.SERIES).
+KIND_COLORS = {"water": "#8ab1b0", "food": "#f79a32", "caffeine": "#a57a4c",
+               "symptom": "#dc3958", "med": "#98676a", "other": RAISED}
+SERIES_COLORS = {"Sinus": "#8ab1b0", "Migraine": "#f79a32", "Dizzy": "#dc3958",
+                 "Fatigue": "#e3b583", "Nausea": "#98676a", "Other": "#a57a4c"}
+HEAT = ["#2c2116", "#4d5a2a", "#889b4a", "#f79a32", "#dc3958"]   # none, then 1-4+ out of 10
 
 FONT = ("Segoe UI", 10)
 
@@ -52,11 +62,16 @@ def apply(root):
     s.configure("TLabel", background=BG, foreground=TEXT)
     s.configure("Muted.TLabel", foreground=MUTED)
     s.configure("Summary.TLabel", font=("Segoe UI", 11, "bold"))
+    s.configure("Title.TLabel", font=("Segoe UI", 18, "bold"), foreground=BRIGHT)
+    s.configure("Card.TFrame", background=SURFACE)
+    s.configure("Card.TLabel", background=SURFACE, foreground=TEXT)
+    s.configure("CardMuted.TLabel", background=SURFACE, foreground=MUTED, font=("Segoe UI", 9))
+    s.configure("CardBig.TLabel", background=SURFACE, foreground=BRIGHT, font=("Segoe UI", 16, "bold"))
 
     s.configure("TButton", background=RAISED, foreground=TEXT, padding=(10, 5),
                 borderwidth=1, focusthickness=0)
-    s.map("TButton", background=[("pressed", BORDER), ("active", "#43454c")])
-    s.configure("Accent.TButton", background=ACCENT, bordercolor=ACCENT)
+    s.map("TButton", background=[("pressed", BORDER), ("active", ACTIVE)])
+    s.configure("Accent.TButton", background=ACCENT, bordercolor=ACCENT, foreground=BG)
     s.map("Accent.TButton", background=[("pressed", ACCENT), ("active", ACCENT_HOVER)])
 
     s.configure("TEntry", fieldbackground=SURFACE, foreground=TEXT, padding=4)
@@ -81,10 +96,10 @@ def apply(root):
     s.configure("TNotebook", background=BG, borderwidth=0, tabmargins=(0, 4, 0, 0))
     s.configure("TNotebook.Tab", background=SURFACE, foreground=MUTED, padding=(14, 6),
                 borderwidth=0)
-    s.map("TNotebook.Tab", background=[("selected", RAISED)], foreground=[("selected", TEXT)])
+    s.map("TNotebook.Tab", background=[("selected", ACCENT)], foreground=[("selected", BG)])
     s.configure("TMenubutton", background=RAISED, foreground=TEXT, padding=(10, 5),
                 arrowcolor=TEXT, borderwidth=1)
-    s.map("TMenubutton", background=[("active", "#43454c")])
+    s.map("TMenubutton", background=[("active", ACTIVE)])
     s.configure("Vertical.TScrollbar", background=RAISED, troughcolor=SURFACE,
                 arrowcolor=TEXT, bordercolor=SURFACE)
     s.map("Vertical.TScrollbar", background=[("active", BORDER)])
