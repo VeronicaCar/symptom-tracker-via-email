@@ -7,3 +7,4 @@ reports/
 pass
 *.env
 *.bak
+edge-profile/

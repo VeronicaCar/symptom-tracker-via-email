@@ -1,0 +1,486 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Symptom Tracker</title>
+<style>
+:root {
+  --bg: #221a0f; --surface: #362712; --raised: #423523; --border: #5a4a37;
+  --text: #d3af86; --bright: #e8cfa8; --muted: #b08a5c;
+  --accent: #889b4a; --accent-hover: #9db15a; --select: #84613d;
+  --water: #8ab1b0; --food: #f79a32; --caffeine: #a57a4c; --symptom: #dc3958;
+  --med: #98676a; --fatigue: #e3b583;
+  --radius: 12px;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+body { background: var(--bg); color: var(--text); font: 14px/1.45 "Segoe UI", system-ui, sans-serif;
+       display: flex; flex-direction: column; overflow: hidden; }
+button, select, input, textarea { font: inherit; color: inherit; }
+button { cursor: pointer; border: 0; border-radius: 8px; padding: 7px 14px; background: var(--raised); color: var(--bright); }
+button:hover { background: #4d3d28; }
+button.primary { background: var(--accent); color: var(--bg); font-weight: 600; }
+button.primary:hover { background: var(--accent-hover); }
+button.ghost { background: transparent; color: var(--text); }
+button.ghost:hover { background: var(--raised); }
+button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-visible, a:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px; }
+select, input, textarea { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; }
+select:focus, input:focus, textarea:focus { border-color: var(--accent); outline: none; }
+
+header.top { display: flex; align-items: center; gap: 16px; padding: 14px 24px 10px; flex-wrap: wrap; }
+.tabs { display: flex; gap: 4px; background: var(--surface); border-radius: 10px; padding: 4px; }
+.tabs button { background: transparent; color: var(--text); padding: 6px 16px; }
+.tabs button[aria-selected="true"] { background: var(--accent); color: var(--bg); font-weight: 600; }
+.spacer { flex: 1; }
+.actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.menu { position: relative; }
+.menu-list { position: absolute; right: 0; top: calc(100% + 6px); background: var(--surface); border: 1px solid var(--border);
+             border-radius: 10px; padding: 6px; min-width: 210px; z-index: 5; display: none; box-shadow: 0 8px 24px rgba(0,0,0,.35); }
+.menu-list.open { display: block; }
+.menu-list button { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); }
+.menu-list button:hover { background: var(--raised); }
+
+main { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 4px 24px 0; }
+aside.days { width: 250px; flex-shrink: 0; background: var(--surface); border-radius: var(--radius); padding: 12px 8px;
+             overflow-y: auto; }
+.eyebrow { font-size: 11px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); padding: 0 10px 8px; }
+.day { display: block; width: 100%; text-align: left; background: transparent; color: var(--text); padding: 8px 10px; border-radius: 8px; }
+.day:hover { background: var(--raised); }
+.day[aria-current="true"] { background: var(--select); color: var(--bright); }
+.day .row { display: flex; justify-content: space-between; font-weight: 600; }
+.day .row span:last-child { color: var(--muted); font-weight: 400; }
+.day .blurb { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.day[aria-current="true"] .blurb, .day[aria-current="true"] .row span:last-child { color: var(--text); }
+
+section.page { flex: 1; min-width: 0; overflow-y: auto; padding-bottom: 24px; }
+.page-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+h1 { margin: 4px 0 0; font-size: 26px; font-weight: 600; color: var(--bright); }
+.conditions { color: var(--muted); font-size: 13px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 16px; }
+.chip { background: var(--raised); color: var(--bright); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+.chip.done { background: var(--select); }
+.mode { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+
+.entries { border-top: 1px solid var(--border); }
+.entry { display: flex; gap: 18px; padding: 12px 4px; border-bottom: 1px solid var(--surface); }
+.entry .time { width: 74px; flex-shrink: 0; color: var(--muted); font-size: 13px; padding-top: 2px; }
+.entry .body { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+.entry .note { color: var(--bright); font-size: 15.5px; line-height: 1.55; margin: 0; }
+.tags { display: flex; flex-wrap: wrap; gap: 6px; }
+.tag { font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 7px; color: var(--bg); }
+.tag.water { background: var(--water); } .tag.food { background: var(--food); }
+.tag.caffeine { background: var(--caffeine); } .tag.symptom { background: var(--symptom); }
+.tag.med { background: var(--med); color: #fff4e6; } .tag.other { background: var(--raised); color: var(--bright); }
+.empty { color: var(--muted); padding: 24px 4px; }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 12px; margin: 14px 0; }
+.card { background: var(--surface); border-radius: var(--radius); padding: 14px 16px; }
+.tile .label { font-size: 12px; color: var(--muted); }
+.tile .value { font-size: 24px; font-weight: 600; color: var(--bright); }
+.bar { height: 6px; background: var(--raised); border-radius: 3px; margin: 6px 0; overflow: hidden; }
+.bar div { height: 100%; border-radius: 3px; }
+.tile .sub { font-size: 12px; color: var(--muted); }
+.tile.warn .sub { color: var(--food); }
+.card h2 { margin: 0 0 8px; font-size: 15px; font-weight: 600; color: var(--bright); }
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.legend { display: flex; gap: 14px; font-size: 12px; flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+.chart svg { width: 100%; height: 230px; display: block; }
+.split { display: flex; gap: 12px; margin-top: 12px; flex-wrap: wrap; }
+.heat { display: grid; grid-template-columns: repeat(7, 36px); gap: 6px 6px; }
+.heat .cell { height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.heat .dow { font-size: 10px; color: var(--muted); text-align: center; margin-top: -2px; }
+.notes-list .row { display: flex; gap: 14px; padding: 5px 0; }
+.notes-list .row span:first-child { width: 70px; flex-shrink: 0; color: var(--muted); font-size: 13px; }
+.notes-list .row span:last-child { color: var(--bright); }
+
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; color: var(--muted); font-weight: 600; font-size: 12px; padding: 10px 12px; position: sticky; top: 0; background: var(--surface); }
+td { padding: 9px 12px; border-top: 1px solid var(--raised); vertical-align: top; }
+td.when { white-space: nowrap; color: var(--muted); }
+td.del { width: 1%; }
+td.del button { padding: 3px 9px; font-size: 12px; background: transparent; color: var(--muted); }
+td.del button:hover { background: var(--symptom); color: var(--bg); }
+.table-card { padding: 0; overflow: hidden; }
+.filter { display: flex; align-items: center; gap: 8px; margin: 12px 0; color: var(--muted); font-size: 13px; }
+
+footer { padding: 8px 24px 12px; color: var(--muted); font-size: 12.5px; }
+
+dialog { background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 16px; padding: 22px 24px;
+         width: min(560px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.5); }
+dialog::backdrop { background: rgba(10, 7, 3, .6); }
+dialog h2 { margin: 0 0 14px; color: var(--bright); font-size: 18px; }
+dialog .row { display: flex; gap: 8px; }
+dialog .hint { color: var(--muted); font-size: 12px; margin-top: 6px; }
+dialog .buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.field { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.field label { font-size: 13px; color: var(--bright); }
+.field .hint { margin-top: 0; }
+.check { display: flex; gap: 8px; align-items: center; margin: 10px 0; }
+.check input { width: 16px; height: 16px; accent-color: var(--accent); }
+.settings-tabs { margin-bottom: 16px; display: inline-flex; }
+.settings-body { max-height: 60vh; overflow-y: auto; padding-right: 4px; }
+.message { margin-top: 10px; font-size: 13px; }
+.message.error { color: #f0778b; } .message.ok { color: var(--accent-hover); }
+[hidden] { display: none !important; }
+@media (max-width: 760px) { main { flex-direction: column; } aside.days { width: auto; max-height: 160px; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <div class="tabs" role="tablist" aria-label="View">
+    <button role="tab" aria-selected="true" data-tab="journal">Journal</button>
+    <button role="tab" aria-selected="false" data-tab="charts">Charts</button>
+    <button role="tab" aria-selected="false" data-tab="all">All entries</button>
+  </div>
+  <div class="spacer"></div>
+  <div class="actions">
+    <button class="primary" id="add">+ Add entry</button>
+    <button id="check">Check inbox</button>
+    <div class="menu">
+      <button id="more" aria-haspopup="true" aria-expanded="false">More ▾</button>
+      <div class="menu-list" id="more-list">
+        <button data-act="remind">Send a check-in reminder now</button>
+        <button data-act="summary">Send the weekly summary now</button>
+        <button data-act="report">Doctor report…</button>
+        <button data-act="export">Export CSV…</button>
+        <button data-act="settings">Settings…</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<main>
+  <aside class="days" id="days-panel" aria-label="Days">
+    <div class="eyebrow">Days</div>
+    <div id="days"></div>
+  </aside>
+
+  <section class="page" id="journal" role="tabpanel">
+    <div class="page-head">
+      <h1 class="title"></h1>
+      <div class="mode" id="mode-wrap"><label for="mode">Today is</label><select id="mode"></select></div>
+    </div>
+    <div class="conditions"></div>
+    <div class="chips" id="chips"></div>
+    <div class="entries" id="entries"></div>
+  </section>
+
+  <section class="page" id="charts" role="tabpanel" hidden>
+    <div class="page-head"><h1 class="title"></h1></div>
+    <div class="conditions"></div>
+    <div class="tiles" id="tiles"></div>
+    <div class="card chart">
+      <div class="chart-head"><h2>Symptoms and water through the day</h2><div class="legend" id="legend"></div></div>
+      <svg id="chart" role="img" aria-label="Symptom ratings and water through the day"></svg>
+    </div>
+    <div class="split">
+      <div class="card"><h2>Worst rating, last 14 days</h2><div class="heat" id="heat"></div></div>
+      <div class="card notes-list" style="flex: 1 1 320px; min-width: 0"><h2>Notes</h2><div id="notes"></div></div>
+    </div>
+  </section>
+
+  <section class="page" id="all" role="tabpanel" hidden>
+    <div class="filter"><label for="filter">Show</label><select id="filter"><option value="">All</option></select></div>
+    <div class="card table-card">
+      <table><thead><tr><th scope="col">When</th><th scope="col">Category</th><th scope="col">Entry</th><th scope="col">From</th><th scope="col"><span hidden>Delete</span></th></tr></thead>
+      <tbody id="rows"></tbody></table>
+    </div>
+  </section>
+</main>
+<footer id="status">Starting…</footer>
+
+<dialog id="add-dialog">
+  <h2>Add entry</h2>
+  <form method="dialog" id="add-form">
+    <div class="row">
+      <select id="add-cat" aria-label="Category"></select>
+      <input id="add-text" aria-label="What to log" style="flex: 1" autocomplete="off">
+    </div>
+    <div class="hint">Add @time to backdate, e.g. "headache 5/10 @2pm" or "@10/23 out all day".</div>
+    <div class="message error" id="add-msg"></div>
+    <div class="buttons"><button type="button" class="ghost" data-close>Cancel</button><button class="primary" type="submit">Add</button></div>
+  </form>
+</dialog>
+
+<dialog id="report-dialog">
+  <h2>Doctor report</h2>
+  <div class="field"><label for="report-range">Cover</label><select id="report-range"></select></div>
+  <div class="hint">Opens in your browser. Use Print, then Save as PDF to share it.</div>
+  <div class="buttons"><button type="button" class="ghost" data-close>Cancel</button><button class="primary" id="report-go">Create report</button></div>
+</dialog>
+
+<dialog id="confirm-dialog">
+  <h2 id="confirm-title"></h2>
+  <p id="confirm-text" style="margin: 0"></p>
+  <div class="buttons"><button type="button" class="ghost" data-close>Cancel</button><button class="primary" id="confirm-go">OK</button></div>
+</dialog>
+
+<dialog id="settings-dialog" style="width: min(640px, calc(100vw - 32px))">
+  <h2>Settings</h2>
+  <div class="tabs settings-tabs" role="tablist" aria-label="Settings sections">
+    <button role="tab" aria-selected="true" data-stab="email">Email</button>
+    <button role="tab" aria-selected="false" data-stab="reminders">Reminders</button>
+    <button role="tab" aria-selected="false" data-stab="tracking">Tracking</button>
+  </div>
+  <form id="settings-form" class="settings-body">
+    <div data-spanel="email">
+      <div class="field"><label for="s-tracker_email">Tracker Gmail address</label><input id="s-tracker_email" name="tracker_email"></div>
+      <div class="field"><label for="s-password">Gmail app password</label><input id="s-password" name="password" type="password" autocomplete="off">
+        <div class="hint" id="pw-hint">Saved in Windows Credential Manager.</div></div>
+      <div class="field"><label for="s-allowed_senders">Accept logs from</label><input id="s-allowed_senders" name="allowed_senders">
+        <div class="hint">Your own addresses, comma separated. Other senders are ignored.</div></div>
+      <div class="field"><label for="s-reminder_to">Send reminders to</label><input id="s-reminder_to" name="reminder_to"></div>
+      <div class="field"><label for="s-poll_minutes">Check inbox every (minutes)</label><input id="s-poll_minutes" name="poll_minutes" style="width: 90px"></div>
+      <div class="field"><label for="s-reply_to_logs">Reply to my log emails</label>
+        <select id="s-reply_to_logs" name="reply_to_logs" style="width: 160px"><option>errors</option><option>always</option><option>never</option></select>
+        <div class="hint">errors = only when an email couldn't be read</div></div>
+      <button type="button" id="test">Test connection</button>
+    </div>
+    <div data-spanel="reminders" hidden>
+      <div class="field"><label for="s-reminder_times">Reminder times</label><input id="s-reminder_times" name="reminder_times">
+        <div class="hint">24-hour times, comma separated, e.g. 09:00, 12:00, 14:00</div></div>
+      <div class="field"><label for="s-reminder_days">Reminder days</label><input id="s-reminder_days" name="reminder_days">
+        <div class="hint">Mon, Tue, Wed, Thu, Fri, Sat, Sun</div></div>
+      <div class="field"><label for="s-skip_if_logged_minutes">Skip if I logged in the last (minutes)</label><input id="s-skip_if_logged_minutes" name="skip_if_logged_minutes" style="width: 90px">
+        <div class="hint">0 = never skip</div></div>
+      <label class="check"><input type="checkbox" name="summary_enabled"> Email me a weekly summary</label>
+      <div class="field"><label for="s-summary_day">Weekly summary on</label>
+        <div class="row"><select id="s-summary_day" name="summary_day" style="width: 100px"></select><input name="summary_time" aria-label="Summary time" style="width: 90px"></div></div>
+      <label class="check"><input type="checkbox" name="send_reminders"> Send check-in reminders from this PC</label>
+      <div class="hint">Turn off if the Google script sends them, so you don't get two.</div>
+    </div>
+    <div data-spanel="tracking" hidden>
+      <div class="field"><label for="s-water_goal_oz">Daily water goal (oz)</label><input id="s-water_goal_oz" name="water_goal_oz" style="width: 90px"></div>
+      <div class="field"><label for="s-weather_place">Weather location</label><input id="s-weather_place" name="weather_place">
+        <div class="hint" id="weather-hint">ZIP code or "City, ST". Leave blank to turn weather off.</div></div>
+      <div class="field"><label for="s-pollen_senders">Pollen report emails from</label><input id="s-pollen_senders" name="pollen_senders">
+        <div class="hint">The sender address (or just its domain) of your pollen alert emails.</div></div>
+      <div class="field"><label for="s-caffeine_drinks">Caffeine per drink (mg)</label><input id="s-caffeine_drinks" name="caffeine_drinks">
+        <div class="hint">"3/4 monster" is logged with its mg. Add more like: red bull = 80</div></div>
+      <div class="field"><label for="s-short_codes">Short codes</label><textarea id="s-short_codes" name="short_codes" rows="9" style="font-family: Consolas, monospace; font-size: 13px"></textarea>
+        <div class="hint">code = category: text   {n} = the number, {text} = the words after it</div></div>
+    </div>
+    <label class="check"><input type="checkbox" name="autostart"> Start with Windows (opens minimized)</label>
+  </form>
+  <div class="message" id="settings-msg"></div>
+  <div class="buttons"><button type="button" class="ghost" data-close>Cancel</button><button class="primary" id="settings-save">Save</button></div>
+</dialog>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const el = (tag, props = {}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v; else if (k === "style") n.style.cssText = v;
+    else if (k.startsWith("on")) n.addEventListener(k.slice(2), v); else n.setAttribute(k, v);
+  }
+  for (const kid of kids.flat()) if (kid != null) n.append(kid);
+  return n;
+};
+const SERIES = { Sinus: "#8ab1b0", Migraine: "#f79a32", Dizzy: "#dc3958", Fatigue: "#e3b583", Nausea: "#98676a", Other: "#a57a4c" };
+const HEAT = [["#2c2116", "#b08a5c"], ["#4d5a2a", "#e8cfa8"], ["#889b4a", "#221a0f"], ["#f79a32", "#221a0f"], ["#dc3958", "#221a0f"]];
+const KIND = { water: "var(--water)", caffeine: "var(--caffeine)", med: "var(--med)", accent: "var(--accent)" };
+let api, state = { day: null, tab: "journal", view: null };
+
+async function load() {
+  state.view = await api.view(state.day);
+  state.day = state.view.day;
+  render();
+  if (state.tab === "all") loadEntries();
+}
+async function loadEntries() {
+  const rows = await api.entries($("#filter").value);
+  $("#rows").replaceChildren(...rows.map(r => el("tr", {},
+    el("td", { class: "when" }, r.when), el("td", {}, r.category), el("td", {}, r.value), el("td", {}, r.source),
+    el("td", { class: "del" }, el("button", { "aria-label": "Delete this entry", onclick: () => confirmDo(
+      "Delete entry", `Delete "${r.value}"?`, async () => { await api.delete_entry(r.id); load(); }) }, "Delete")))));
+}
+
+function render() {
+  const v = state.view;
+  $$(".title").forEach(h => h.textContent = v.title);
+  $$(".conditions").forEach(c => c.textContent = v.conditions);
+  $("#status").textContent = v.status;
+  $("#mode-wrap").hidden = v.day !== v.today;
+  $("#mode").replaceChildren(...Object.entries(v.modes).map(([k, label]) => el("option", { value: k }, label)));
+  $("#mode").value = v.mode;
+  if ($("#filter").options.length === 1)
+    v.categories.forEach(c => $("#filter").append(el("option", { value: c.key }, c.label)));
+  $("#add-cat").replaceChildren(...v.categories.map(c => el("option", { value: c.key }, c.label)));
+
+  $("#days").replaceChildren(...v.days.map(d => el("button", { class: "day", "aria-current": String(d.day === v.day),
+      onclick: () => { state.day = d.day; load(); } },
+    el("div", { class: "row" }, el("span", {}, d.label), el("span", {}, String(d.count))),
+    el("div", { class: "blurb" }, d.blurb || " "))));
+
+  $("#chips").replaceChildren(...v.chips.map(c => el("span", { class: "chip" + (c.done ? " done" : "") }, c.text)));
+  $("#entries").replaceChildren(...(v.groups.length ? v.groups.map(g => el("div", { class: "entry" },
+    el("div", { class: "time" }, g.time),
+    el("div", { class: "body" },
+      g.note ? el("p", { class: "note" }, g.note) : null,
+      g.tags.length ? el("div", { class: "tags" }, g.tags.map(t => el("span", { class: "tag " + t.kind }, t.text))) : null)))
+    : [el("div", { class: "empty" }, "Nothing logged this day.")]));
+
+  $("#tiles").replaceChildren(...v.tiles.map(t => el("div", { class: "card tile" + (t.warn ? " warn" : "") },
+    el("div", { class: "label" }, t.label), el("div", { class: "value" }, t.value),
+    el("div", { class: "bar" }, el("div", { style: `width:${Math.min(100, t.frac * 100)}%;background:${KIND[t.kind]}` })),
+    el("div", { class: "sub" }, t.sub))));
+  drawChart(v);
+  $("#heat").replaceChildren(...v.heat.map(h => {
+    const level = h.peak == null ? 0 : Math.min(4, Math.max(1, Math.ceil(h.peak)));
+    const [bg, fg] = HEAT[level];
+    return el("div", {}, el("div", { class: "cell", style: `background:${bg};color:${fg}`, title: `${h.day}: ${h.peak ?? "nothing rated"}` },
+      h.peak == null ? "–" : String(h.peak)), el("div", { class: "dow" }, h.label));
+  }));
+  const notes = v.groups.filter(g => g.note);
+  $("#notes").replaceChildren(...(notes.length ? notes.map(g => el("div", { class: "row" }, el("span", {}, g.time), el("span", {}, g.note)))
+    : [el("div", { class: "empty", style: "padding: 4px 0" }, "No notes this day.")]));
+}
+
+function drawChart(v) {
+  const svg = $("#chart"), W = svg.clientWidth || 800, H = 230;
+  const L = 34, R = W - 46, T = 14, B = H - 24;
+  const names = Object.keys(v.series).sort();
+  const hours = names.flatMap(n => v.series[n].map(p => p[0])).concat(v.water.map(p => p[0]));
+  const start = Math.min(8, ...hours.map(Math.floor)), end = Math.max(18, ...hours.map(h => Math.floor(h) + 1));
+  const topS = Math.max(6, ...names.flatMap(n => v.series[n].map(p => p[1])));
+  const topW = Math.max(v.water_goal || 64, ...v.water.map(p => p[1]));
+  const x = h => L + (h - start) / (end - start) * (R - L), ys = s => B - s / topS * (B - T), yw = o => B - o / topW * (B - T);
+  let out = "";
+  for (const f of [0, .5, 1]) {
+    const y = B - f * (B - T);
+    out += `<line x1="${L}" x2="${R}" y1="${y}" y2="${y}" stroke="#423523"/>`;
+    out += `<text x="${L - 8}" y="${y + 4}" text-anchor="end" fill="#b08a5c" font-size="11">${+(topS * f).toFixed(1)}</text>`;
+    out += `<text x="${R + 8}" y="${y + 4}" fill="#b08a5c" font-size="11">${Math.round(topW * f)} oz</text>`;
+  }
+  for (let h = start; h <= end; h += 2) {
+    const label = `${h % 12 || 12}${h < 12 || h === 24 ? "a" : "p"}`;
+    out += `<text x="${x(h)}" y="${H - 6}" text-anchor="middle" fill="#b08a5c" font-size="11">${label}</text>`;
+  }
+  if (v.water.length) {
+    let pts = [[x(start), yw(0)]];
+    for (const [h, oz] of v.water) pts.push([x(h), pts[pts.length - 1][1]], [x(h), yw(oz)]);
+    pts.push([x(end), pts[pts.length - 1][1]]);
+    out += `<polyline fill="none" stroke="#d3af86" stroke-width="1.5" stroke-dasharray="4 3" points="${pts.join(" ")}"/>`;
+  }
+  for (const n of names) {
+    const c = SERIES[n] || SERIES.Other, p = v.series[n];
+    const pts = p.map(([h, s]) => [x(h), ys(s)]).concat([[x(end), ys(p[p.length - 1][1])]]);
+    out += `<polyline fill="none" stroke="${c}" stroke-width="2.5" stroke-linejoin="round" points="${pts.join(" ")}"/>`;
+    for (const [h, s] of p) out += `<circle cx="${x(h)}" cy="${ys(s)}" r="4.5" fill="${c}"><title>${n} ${s}/10</title></circle>`;
+  }
+  svg.innerHTML = out;
+  $("#legend").replaceChildren(...names.map(n => el("span", {}, el("i", { style: `background:${SERIES[n] || SERIES.Other}` }), n)),
+    el("span", {}, el("i", { style: "background:none;border-top:2px dashed #d3af86;height:0;width:12px" }), "Water"));
+}
+
+function showTab(tab) {
+  state.tab = tab;
+  $$("[data-tab]").forEach(b => b.setAttribute("aria-selected", String(b.dataset.tab === tab)));
+  for (const id of ["journal", "charts", "all"]) $("#" + id).hidden = id !== tab;
+  $("#days-panel").hidden = tab === "all";
+  if (tab === "charts" && state.view) drawChart(state.view);
+  if (tab === "all") loadEntries();
+}
+
+function confirmDo(title, text, fn) {
+  const d = $("#confirm-dialog");
+  $("#confirm-title").textContent = title;
+  $("#confirm-text").textContent = text;
+  $("#confirm-go").onclick = async () => { d.close(); await fn(); };
+  d.showModal();
+}
+
+async function openSettings() {
+  const s = await api.get_settings(), f = $("#settings-form");
+  $("#s-summary_day").replaceChildren(...s.days.map(d => el("option", {}, d)));
+  for (const input of f.elements) {
+    if (!input.name || !(input.name in s)) continue;
+    if (input.type === "checkbox") input.checked = !!s[input.name]; else input.value = s[input.name];
+  }
+  $("#pw-hint").textContent = "Saved in Windows Credential Manager." + (s.has_password ? " Leave blank to keep the saved one." : "");
+  $("#weather-hint").textContent = (s.weather_label ? `Using ${s.weather_label}. ` : "") + 'ZIP code or "City, ST". Leave blank to turn weather off.';
+  $("#settings-msg").textContent = "";
+  $("#settings-dialog").showModal();
+}
+function settingsForm() {
+  const out = {};
+  for (const input of $("#settings-form").elements)
+    if (input.name) out[input.name] = input.type === "checkbox" ? input.checked : input.value;
+  return out;
+}
+function say(target, res) {
+  target.className = "message " + (res.ok ? "ok" : "error");
+  target.textContent = res.ok ? (res.message || "") : res.error;
+}
+
+function wire() {
+  $$("[data-tab]").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+  $$("[data-close]").forEach(b => b.onclick = () => b.closest("dialog").close());
+  $("#add").onclick = () => { $("#add-text").value = ""; $("#add-msg").textContent = ""; $("#add-dialog").showModal(); $("#add-text").focus(); };
+  $("#add-form").onsubmit = async e => {
+    e.preventDefault();
+    const res = await api.add_entry($("#add-cat").value, $("#add-text").value);
+    if (!res.ok) { $("#add-msg").textContent = res.error; return; }
+    $("#add-dialog").close(); load();
+  };
+  $("#check").onclick = async () => { await api.request("check"); poll(); };
+  const more = $("#more"), list = $("#more-list");
+  more.onclick = e => { e.stopPropagation(); list.classList.toggle("open"); more.setAttribute("aria-expanded", list.classList.contains("open")); };
+  document.addEventListener("click", () => { list.classList.remove("open"); more.setAttribute("aria-expanded", "false"); });
+  list.onclick = async e => {
+    const act = e.target.dataset.act;
+    if (act === "remind") confirmDo("Send reminder", "Send a check-in email now?", () => api.request("remind").then(poll));
+    if (act === "summary") confirmDo("Weekly summary", "Email the summary of the last 7 days now?", () => api.request("summary").then(poll));
+    if (act === "export") { await api.export_csv(); poll(); }
+    if (act === "settings") openSettings();
+    if (act === "report") {
+      $("#report-range").replaceChildren(...(await api.report_ranges()).map(r => el("option", {}, r)));
+      $("#report-dialog").showModal();
+    }
+  };
+  $("#report-go").onclick = async () => { $("#report-dialog").close(); await api.make_report($("#report-range").value); poll(); };
+  $("#mode").onchange = async () => { await api.set_mode($("#mode").value); poll(); };
+  $("#filter").onchange = loadEntries;
+  $$("[data-stab]").forEach(b => b.onclick = () => {
+    $$("[data-stab]").forEach(x => x.setAttribute("aria-selected", String(x === b)));
+    $$("[data-spanel]").forEach(p => p.hidden = p.dataset.spanel !== b.dataset.stab);
+  });
+  $("#test").onclick = async () => { $("#settings-msg").textContent = "Connecting…"; say($("#settings-msg"), await api.test_connection(settingsForm())); };
+  $("#settings-save").onclick = async () => {
+    const res = await api.save_settings(settingsForm());
+    if (res.ok) { $("#settings-dialog").close(); setTimeout(load, 1500); } else say($("#settings-msg"), res);
+  };
+  window.addEventListener("resize", () => state.view && state.tab === "charts" && drawChart(state.view));
+}
+
+async function poll() {
+  const p = await api.poll();
+  $("#status").textContent = p.status;
+  if (p.refresh) load();
+}
+
+async function start(theApi) {
+  api = theApi;
+  wire();
+  await load();
+  if (!state.view.configured) openSettings();
+  setInterval(poll, 2000);
+  setInterval(() => { if (state.view && state.view.today !== new Date().toISOString().slice(0, 10)) { state.day = null; load(); } }, 60000);
+}
+// Every call goes to the app's local server (webui.py): api.view(day) -> POST /api/view.
+const TOKEN = "__TOKEN__";
+const serverApi = new Proxy({}, { get: (_, name) => async (...args) => {
+  const r = await fetch("/api/" + name, { method: "POST", headers: { "X-Token": TOKEN }, body: JSON.stringify(args) });
+  const data = await r.json();
+  if (!r.ok) { $("#status").textContent = "Problem: " + (data.error || r.status); throw new Error(data.error); }
+  return data;
+} });
+start(window.mockApi || serverApi);
+</script>
+</body>
+</html>
