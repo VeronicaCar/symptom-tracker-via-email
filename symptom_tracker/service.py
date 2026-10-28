@@ -84,6 +84,11 @@ class Worker(threading.Thread):
     # ---- jobs ------------------------------------------------------------
 
     def check_inbox(self):
+        if not self.store.reminder_sent("once: reread cut-off notes"):
+            fixed = mailer.reread_cut_off(self.cfg, self._password(), self.store)
+            self.store.record_reminder("once: reread cut-off notes")
+            if fixed:
+                log.info("Finished %d cut-off entries", fixed)
         results = mailer.fetch_logs(self.cfg, self._password(), self.store)
         self.last_check = dt.datetime.now()
         count = sum(len(r["entries"]) for r in results)

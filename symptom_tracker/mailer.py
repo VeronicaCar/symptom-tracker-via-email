@@ -46,6 +46,56 @@ def _matches(sender, patterns):
     return any(sender == p or domain == p.lstrip("@") for p in patterns)
 
 
+def _headers(imap, uids):
+    """{uid: raw From and Message-ID headers} for many messages in one round trip."""
+    _, parts = imap.uid("FETCH", b",".join(uids),
+                        "(UID BODY.PEEK[HEADER.FIELDS (FROM MESSAGE-ID)])")
+    headers = {}
+    for p in parts:
+        if isinstance(p, tuple):
+            m = re.search(rb"UID (\d+)", p[0])
+            if m:
+                headers[m.group(1)] = p[1]
+    return headers
+
+
+def reread_cut_off(cfg, password, store):
+    """Older versions kept only the first line of a long note that the mail app
+    had wrapped onto two lines. Read the last LOOKBACK_DAYS of those emails again
+    and finish any entry that was cut off. Returns how many were fixed."""
+    wanted = store.long_email_entries(dt.date.today() - dt.timedelta(days=LOOKBACK_DAYS))
+    if not wanted:
+        return 0
+    codes = cfg.get("short_codes") or parser.DEFAULT_CODES
+    since = (dt.date.today() - dt.timedelta(days=LOOKBACK_DAYS)).strftime("%d-%b-%Y")
+    fixed = 0
+    with imaplib.IMAP4_SSL(cfg["imap_host"], ssl_context=ssl.create_default_context(), timeout=TIMEOUT) as imap:
+        imap.login(cfg["tracker_email"], password)
+        imap.select("INBOX")
+        _, data = imap.uid("SEARCH", None, "SINCE", since)
+        uids = data[0].split()
+        if not uids:
+            return 0
+        for uid, head in _headers(imap, uids).items():
+            hdr = email.message_from_bytes(head, policy=policy.default)
+            old = wanted.get(hdr.get("Message-ID") or f"uid-{uid.decode()}")
+            if not old:
+                continue
+            raw = _fetch_one(imap, uid, "BODY.PEEK[]")
+            if raw is None:
+                continue
+            msg = email.message_from_bytes(raw, policy=policy.default)
+            parsed = parser.parse_message(msg.get("Subject", ""), parser.message_text(msg),
+                                          sent_at=_local_time(msg), codes=codes)
+            for entry_id, category, value in old:
+                full = next((e.value for e in parsed.entries if e.category == category
+                             and len(e.value) > len(value) and e.value.startswith(value)), None)
+                if full:
+                    store.update_value(entry_id, category, full)
+                    fixed += 1
+    return fixed
+
+
 def fetch_logs(cfg, password, store):
     """Log every email from an allowed sender in the last LOOKBACK_DAYS that
     hasn't been logged yet, read or not. Entries are timestamped with when the
@@ -70,14 +120,7 @@ def fetch_logs(cfg, password, store):
             return results
         # Headers for everything in one round trip, so already-logged mail
         # isn't downloaded again.
-        _, parts = imap.uid("FETCH", b",".join(uids),
-                            "(UID BODY.PEEK[HEADER.FIELDS (FROM MESSAGE-ID)])")
-        headers = {}
-        for p in parts:
-            if isinstance(p, tuple):
-                m = re.search(rb"UID (\d+)", p[0])
-                if m:
-                    headers[m.group(1)] = p[1]
+        headers = _headers(imap, uids)
         for uid in uids:
             head = headers.get(uid)
             if head is None:
