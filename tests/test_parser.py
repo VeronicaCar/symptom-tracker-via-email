@@ -239,6 +239,24 @@ class BackdateTests(unittest.TestCase):
         self.assertEqual(times("LOG", "@10/23 Food: toast\n", sent_at=later), [dt.datetime(2026, 10, 23, 12, 0)])
         self.assertEqual(p("@someone MISC hi"), [])
 
+    def test_wrapped_lines(self):
+        wrapped = "trail mix and salt have helped the sudden onset dizziness but still not\n100% better\n"
+        full = "trail mix and salt have helped the sudden onset dizziness but still not 100% better"
+        self.assertEqual(p("MISC", wrapped + "\nSent from my iPhone\n"), [("misc", full)])
+        self.assertEqual(p("LOG", "Misc: " + wrapped + "Food: toast\nWater: 8oz\n"),
+                         [("misc", full), ("food", "toast"), ("water", "8oz")])
+        # a short line is never joined onto the next one
+        self.assertEqual(p("LOG", "Misc: tired\nFATIGUE 3/10\n"), [("misc", "tired"), ("fatigue", "3/10")])
+
+    def test_format_flowed(self):
+        import email
+        from email import policy
+        raw = (b"Subject: NOTE\r\nContent-Type: text/plain; charset=utf-8; format=flowed\r\n\r\n"
+               b"vision is a bit bouncy today but only a little \r\nvisual snow\r\n")
+        msg = email.message_from_bytes(raw, policy=policy.default)
+        self.assertEqual(parser.message_text(msg).strip(),
+                         "vision is a bit bouncy today but only a little visual snow")
+
     def test_time_in_the_middle(self):
         later = dt.datetime(2026, 10, 26, 20, 30)
         self.assertEqual(p("MISC out all day @10/23, unsure if flu shot", sent_at=later),
@@ -484,6 +502,35 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertNotIn("NAP%20%40yesterday", html)
         self.assertIn("le2 migraine = left 2h early: migraine", text)
         self.assertIn("z30 = nap 30 min", text)
+
+
+class RereadTests(unittest.TestCase):
+    def test_cut_off_entries_are_finished(self):
+        from unittest import mock
+        from symptom_tracker import mailer
+        store = Store(Path(tempfile.mkdtemp()) / "t.db")
+        cut = "trail mix and salt have helped the sudden onset dizziness but still not"
+        store.add_entries([("misc", cut), ("water", "8oz")], message_id="<a@x>")
+        raw = (b"From: me@x.com\r\nMessage-ID: <a@x>\r\nSubject: LOG\r\nDate: Mon, 26 Oct 2026 15:19:00 -0400\r\n\r\n"
+               b"Misc: " + cut.encode() + b"\r\n100% better\r\nWater: 8oz\r\n")
+
+        class FakeImap:
+            def __init__(self, *a, **k): pass
+            def __enter__(self): return self
+            def __exit__(self, *a): pass
+            def login(self, *a): pass
+            def select(self, *a): pass
+            def uid(self, cmd, *args):
+                if cmd == "SEARCH":
+                    return "OK", [b"7"]
+                if "HEADER.FIELDS" in args[-1]:
+                    return "OK", [(b"7 (UID 7 BODY[HEADER.FIELDS (FROM MESSAGE-ID)] {30}", b"Message-ID: <a@x>\r\n\r\n"), b")"]
+                return "OK", [(b"7 (BODY[] {99}", raw), b")"]
+
+        with mock.patch.object(mailer.imaplib, "IMAP4_SSL", FakeImap):
+            fixed = mailer.reread_cut_off(dict(config.DEFAULTS, imap_host="x", tracker_email="t@x"), "pw", store)
+        self.assertEqual(fixed, 1)
+        self.assertIn(("misc", cut + " 100% better"), [(r[2], r[3]) for r in store.recent()])
 
 
 if __name__ == "__main__":

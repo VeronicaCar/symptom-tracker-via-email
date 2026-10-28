@@ -509,6 +509,34 @@ def _body_lines(body):
         yield line
 
 
+def _starts_item(line, codes):
+    """True if a body line starts a new item rather than continuing the last one."""
+    text = line.strip()
+    if not text or text.startswith((">", "@")):
+        return True
+    m = _LINE_RE.match(text)
+    if m and category_for(m.group(1)):
+        return True
+    if parse_codes(text, codes) or _command(text):
+        return True
+    one_off = _one_off_category(text)
+    return bool(one_off and (one_off[1].isupper() or one_off[0] in VITALS))
+
+
+def _unwrap(lines, codes):
+    """Mail apps wrap long lines at about 70 characters, so "...but still not" /
+    "100% better" arrives as two lines. Join a line onto a long one before it
+    unless it starts a new item."""
+    out = []
+    for line in lines:
+        prev = out[-1].strip() if out else ""
+        if len(prev) >= 60 and not prev.startswith(">") and not _starts_item(line, codes):
+            out[-1] = out[-1].rstrip() + " " + line.strip()
+        else:
+            out.append(line)
+    return out
+
+
 def _clean(value):
     value = value.strip()
     return "" if _PLACEHOLDER_RE.match(value) else value
@@ -575,21 +603,22 @@ def parse_message(subject, body, sent_at=None, codes=None):
         if one_off:
             cat, word, value = one_off
             value = _clean(value)
-            if not value:
+            if not value:  # the first paragraph of the body, joined back up
+                para = []
                 for line in _body_lines(body):
                     stripped = line.strip()
-                    if stripped.startswith(">"):
+                    if stripped.startswith(">") or (para and not stripped):
                         break
                     if _clean(stripped):
-                        value = _clean(stripped)
-                        break
+                        para.append(_clean(stripped))
+                value = " ".join(para)
             value, at = split_time(value, sent_at)
             if not value and cat in NO_VALUE_NEEDED and word.lower() not in _KEEP_LABEL:
                 value = LABELS[cat].lower()
             add(cat, _labelled(word, value), at)
             return Parsed(entries)
 
-    for line in _body_lines(body):
+    for line in _unwrap(list(_body_lines(body)), codes):
         lead_at = None
         if line.lstrip().startswith("@"):  # "@10/23 Food: toast"
             rest, lead_at = split_time(line.strip(), sent_at)
@@ -632,11 +661,31 @@ def html_to_text(markup):
     return html.unescape(markup).replace("\xa0", " ")
 
 
+def unflow(text, delsp=False):
+    """Join the soft line breaks of a format=flowed body (RFC 3676, iPhone Mail):
+    a line ending in a space continues on the next one."""
+    out, cur = [], ""
+    for line in text.splitlines():
+        cur += line
+        if line.endswith(" ") and line != "-- ":
+            if delsp:
+                cur = cur[:-1]
+            continue
+        out.append(cur)
+        cur = ""
+    if cur:
+        out.append(cur)
+    return "\n".join(out)
+
+
 def message_text(msg):
     """Best-effort plain text body of an email.message.EmailMessage."""
     part = msg.get_body(preferencelist=("plain",))
     if part is not None:
-        return part.get_content()
+        text = part.get_content()
+        if (part.get_param("format") or "").lower() == "flowed":
+            text = unflow(text, (part.get_param("delsp") or "").lower() == "yes")
+        return text
     part = msg.get_body(preferencelist=("html",))
     if part is not None:
         return html_to_text(part.get_content())

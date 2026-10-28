@@ -161,6 +161,23 @@ class Store:
             row = c.execute("SELECT MAX(created_at) FROM entries").fetchone()
         return dt.datetime.fromisoformat(row[0]) if row and row[0] else None
 
+    def long_email_entries(self, since):
+        """{message_id: [(id, category, value)]} for emailed entries long enough to
+        have been cut off at a wrapped line."""
+        out = {}
+        with self._conn() as c:
+            for entry_id, cat, value, mid in c.execute(
+                    "SELECT id, category, value, message_id FROM entries WHERE source = 'email'"
+                    " AND message_id IS NOT NULL AND length(value) >= 50 AND created_at >= ?",
+                    (str(since),)):
+                out.setdefault(mid, []).append((entry_id, cat, value))
+        return out
+
+    def update_value(self, entry_id, category, value):
+        sev = severity_of(value) if category in SEVERITY_CATEGORIES else None
+        with self._conn() as c, c:
+            c.execute("UPDATE entries SET value = ?, severity = ? WHERE id = ?", (value, sev, entry_id))
+
     def delete(self, entry_id):
         with self._conn() as c, c:
             c.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
