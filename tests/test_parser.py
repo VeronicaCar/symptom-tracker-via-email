@@ -528,6 +528,75 @@ class DayViewTests(unittest.TestCase):
         self.assertIsNone(dayview.peak_of_day([]))
 
 
+class WebUiTests(unittest.TestCase):
+    def setUp(self):
+        import queue
+        from symptom_tracker import webapp
+        self.store = Store(Path(tempfile.mkdtemp()) / "t.db")
+
+        class FakeWorker:
+            cfg = dict(config.DEFAULTS, tracker_email="t@gmail.com", allowed_senders=["me@x.com"],
+                       reminder_to="me@x.com")
+            events, requests = queue.Queue(), queue.Queue()
+        self.worker = FakeWorker()
+        self.api = webapp.Api(self.store, self.worker)
+
+    def test_view_and_changes(self):
+        today = dt.date.today()
+        at = dt.datetime.combine(today, dt.time(9, 30))
+        self.store.add_entries([("misc", "slept in", at), ("water", "16oz", at), ("sinus", "2/10", at)])
+        v = self.api.view()
+        self.assertEqual(v["day"], str(today))
+        self.assertEqual(v["groups"][0]["note"], "Slept in")
+        self.assertIn({"kind": "water", "text": "Water 16 oz"}, v["groups"][0]["tags"])
+        self.assertEqual(v["days"][0]["count"], 3)
+        self.assertEqual(len(v["heat"]), 14)
+        self.assertEqual(self.api.add_entry("food", "toast @9am")["ok"], True)
+        self.assertFalse(self.api.add_entry("food", "  ")["ok"])
+        rows = self.api.entries()
+        self.assertEqual(len(rows), 4)
+        self.api.delete_entry(rows[0]["id"])
+        self.assertEqual(len(self.api.entries()), 3)
+        self.api.request("check")
+        self.assertEqual(self.worker.requests.get_nowait(), "check")
+        self.worker.events.put(("checked", 2))
+        self.assertTrue(self.api.poll()["refresh"])
+
+    def test_settings_form_round_trip(self):
+        from symptom_tracker import webapp
+        cfg = dict(config.DEFAULTS, tracker_email="t@gmail.com")
+        form = webapp.settings_form(cfg)
+        form.update(reminder_times="9:00, 14:30", reminder_days="mon, Wed")
+        out = webapp.config_from_form(form, cfg)
+        self.assertEqual(out["reminder_times"], ["09:00", "14:30"])
+        self.assertEqual(out["reminder_days"], ["Mon", "Wed"])
+        form["reminder_days"] = "Funday"
+        with self.assertRaises(ValueError):
+            webapp.config_from_form(form, cfg)
+
+    def test_server_needs_the_token(self):
+        import json as _json
+        import threading
+        import urllib.error
+        import urllib.request
+        from symptom_tracker import webui
+        server = webui.make_server(self.api, "secret")
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        base = f"http://127.0.0.1:{server.server_port}"
+        try:
+            page = urllib.request.urlopen(base + "/").read().decode()
+            self.assertIn('const TOKEN = "secret"', page)
+            call = lambda name, token: urllib.request.urlopen(urllib.request.Request(
+                f"{base}/api/{name}", data=b"[]", headers={"X-Token": token}))
+            self.assertIn("days", _json.loads(call("view", "secret").read()))
+            with self.assertRaises(urllib.error.HTTPError):
+                call("view", "wrong")
+            with self.assertRaises(urllib.error.HTTPError):
+                call("_status_line", "secret")
+        finally:
+            server.shutdown()
+
+
 class RereadTests(unittest.TestCase):
     def test_cut_off_entries_are_finished(self):
         from unittest import mock

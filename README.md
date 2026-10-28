@@ -6,6 +6,7 @@ and notes that you
 email to a dedicated Gmail address, and emails you fill-in-the-blanks check-in
 reminders during the work day. Everything is stored locally in
 `symptom_log.db`. It only uses Python's standard library, so nothing to install.
+The window is drawn by Microsoft Edge (built into Windows) as an app window.
 
 ## One-time setup
 
@@ -234,12 +235,21 @@ it. Reports are saved in the `reports` folder.
 
 ## In the window
 
-- **Check inbox now**, **Send email** (reminder or weekly summary now)
-- **Add entry**: log something directly without email (`@time` works here too).
-- **Today**: switch between normal, rough day and paused.
-- **Export CSV**: a spreadsheet of everything.
-- Select a row and press **Delete** to remove it.
-- Problems show in the status bar; details go to `tracker.log`.
+The window opens in Microsoft Edge's app mode, with no tabs or address bar. A
+small server inside the app feeds it, and only this PC can reach that server. If
+Edge isn't installed, the older plain window opens instead. Run
+`Symptom Tracker.pyw --classic` to use the older window on purpose.
+
+- **Journal**: pick a day on the left. Notes read in full, with colored tags
+  for water, food, caffeine, ratings and meds.
+- **Charts**: totals, symptoms and water through the day, the worst rating
+  of the last 14 days, and the day's notes.
+- **All entries**: every entry, filterable by category, with **Delete** on each row.
+- **+ Add entry**: log something directly without email (`@time` works here too).
+- **Check inbox**, and under **More**: send a reminder or weekly summary now,
+  the doctor report, **Export CSV** (saved to Downloads) and **Settings**.
+- **Today is**: switch between normal, rough day and paused.
+- Problems show in the status line at the bottom; details go to `tracker.log`.
 
 ## Tests
 

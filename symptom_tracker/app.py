@@ -604,4 +604,12 @@ def main():
                         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     if _already_running():
         return
-    App(minimized="--minimized" in sys.argv).mainloop()
+    minimized = "--minimized" in sys.argv
+    if "--classic" not in sys.argv:
+        from . import webui
+        try:
+            if webui.run(minimized=minimized):
+                return
+        except Exception:  # fall back to the classic window rather than not opening
+            logging.getLogger(__name__).exception("the HTML window failed")
+    App(minimized=minimized).mainloop()
