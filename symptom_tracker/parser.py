@@ -661,11 +661,31 @@ def html_to_text(markup):
     return html.unescape(markup).replace("\xa0", " ")
 
 
+def unflow(text, delsp=False):
+    """Join the soft line breaks of a format=flowed body (RFC 3676, iPhone Mail):
+    a line ending in a space continues on the next one."""
+    out, cur = [], ""
+    for line in text.splitlines():
+        cur += line
+        if line.endswith(" ") and line != "-- ":
+            if delsp:
+                cur = cur[:-1]
+            continue
+        out.append(cur)
+        cur = ""
+    if cur:
+        out.append(cur)
+    return "\n".join(out)
+
+
 def message_text(msg):
     """Best-effort plain text body of an email.message.EmailMessage."""
     part = msg.get_body(preferencelist=("plain",))
     if part is not None:
-        return part.get_content()
+        text = part.get_content()
+        if (part.get_param("format") or "").lower() == "flowed":
+            text = unflow(text, (part.get_param("delsp") or "").lower() == "yes")
+        return text
     part = msg.get_body(preferencelist=("html",))
     if part is not None:
         return html_to_text(part.get_content())

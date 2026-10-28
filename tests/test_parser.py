@@ -248,6 +248,15 @@ class BackdateTests(unittest.TestCase):
         # a short line is never joined onto the next one
         self.assertEqual(p("LOG", "Misc: tired\nFATIGUE 3/10\n"), [("misc", "tired"), ("fatigue", "3/10")])
 
+    def test_format_flowed(self):
+        import email
+        from email import policy
+        raw = (b"Subject: NOTE\r\nContent-Type: text/plain; charset=utf-8; format=flowed\r\n\r\n"
+               b"vision is a bit bouncy today but only a little \r\nvisual snow\r\n")
+        msg = email.message_from_bytes(raw, policy=policy.default)
+        self.assertEqual(parser.message_text(msg).strip(),
+                         "vision is a bit bouncy today but only a little visual snow")
+
     def test_time_in_the_middle(self):
         later = dt.datetime(2026, 10, 26, 20, 30)
         self.assertEqual(p("MISC out all day @10/23, unsure if flu shot", sent_at=later),
