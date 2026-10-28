@@ -504,6 +504,30 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertIn("z30 = nap 30 min", text)
 
 
+class DayViewTests(unittest.TestCase):
+    def test_day_view(self):
+        from symptom_tracker import dayview
+        rows = [("2026-10-26 09:16:00", "misc", "slept in", None),
+                ("2026-10-26 09:16:00", "misc", "sinuses feel full", None),
+                ("2026-10-26 10:42:00", "water", "8oz", None),
+                ("2026-10-26 10:42:00", "sinus", "1.5/10", 1.5),
+                ("2026-10-26 14:51:00", "symptoms", "migraine 2/10", 2),
+                ("2026-10-26 15:07:00", "symptoms", "dizzy 1.5/10", 1.5),
+                ("2026-10-26 15:27:00", "water", "16oz", None),
+                ("2026-10-26 16:00:00", "advil", "2 tablets (400 mg)", None)]
+        view = dayview.day_view(rows)
+        self.assertEqual([g["time"] for g in view["groups"]],
+                         ["9:16 AM", "10:42 AM", "2:51 PM", "3:07 PM", "3:27 PM", "4:00 PM"])
+        self.assertEqual(dayview.join_notes(view["groups"][0]["notes"]), "Slept in. Sinuses feel full")
+        self.assertEqual(view["groups"][1]["tags"], [("water", "Water 8 oz"), ("symptom", "Sinus pain 1.5/10")])
+        self.assertEqual(view["groups"][-1]["tags"], [("med", "Advil · 2 tablets (400 mg)")])
+        self.assertEqual(view["peaks"], {"Sinus": 1.5, "Migraine": 2.0, "Dizzy": 1.5})
+        self.assertEqual(view["water"][-1][1], 24)
+        self.assertEqual(dayview.day_blurb(rows), "Migraine 2 · 24 oz")
+        self.assertEqual(dayview.peak_of_day(rows), 2)
+        self.assertIsNone(dayview.peak_of_day([]))
+
+
 class RereadTests(unittest.TestCase):
     def test_cut_off_entries_are_finished(self):
         from unittest import mock
