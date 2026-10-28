@@ -30,6 +30,12 @@ class OneOffTests(unittest.TestCase):
         body = "turkey sandwich and chips\n\nSent from my iPhone"
         self.assertEqual(p("FOOD", body), [("food", "turkey sandwich and chips")])
 
+    def test_wrapped_body_joined(self):
+        body = ("still feeling pretty good, not really brain foggy, only a little visual\n"
+                "snow\n\nOn Wed, Oct 28, 2026 at 10:00 AM Tracker wrote:\n> Note:\n")
+        self.assertEqual(p("NOTE", body), [
+            ("misc", "still feeling pretty good, not really brain foggy, only a little visual snow")])
+
     def test_meal_label_kept(self):
         self.assertEqual(p("lunch salad"), [("food", "lunch: salad")])
 
@@ -173,6 +179,22 @@ class FullLogTests(unittest.TestCase):
         self.assertEqual(p("LOG", body), [
             ("water", "24 oz"), ("left_early", "3.5h early: vertigo"), ("bp", "113/75"),
             ("hr", "81 bpm"), ("o2", "99%")])
+
+    def test_wrapped_lines_in_log(self):
+        body = ("Misc: woke up at 6:50am today so improvement, allergies noticeably worse\n"
+                "today so far\nWater: 8oz\nWater was cold today\n")
+        self.assertEqual(p("LOG", body), [
+            ("misc", "woke up at 6:50am today so improvement, allergies noticeably worse today so far"),
+            ("water", "8oz")])
+
+    def test_format_flowed(self):
+        from email import message_from_string, policy
+        msg = message_from_string(
+            "Subject: NOTE\nContent-Type: text/plain; charset=utf-8; format=flowed\n\n"
+            "visual snow/noise more noticeable now on light screens but not yet \nbad\n",
+            policy=policy.default)
+        self.assertEqual(p("NOTE", parser.message_text(msg)),
+                         [("misc", "visual snow/noise more noticeable now on light screens but not yet bad")])
 
     def test_signature_ignored(self):
         self.assertEqual(p("log", "Water: 8oz\n--\nMisc: my signature\n"), [("water", "8oz")])
@@ -378,6 +400,17 @@ class StoreAndReportTests(unittest.TestCase):
         self.assertEqual(s.day_mode(), "rough")
         s.set_day_mode("normal")
         self.assertEqual(s.day_mode(), "normal")
+
+    def test_rewrap_cut_off_entries(self):
+        s = self.store
+        cut = "still feeling pretty good, not really brain foggy, only a little visual"
+        s.add_entries([("misc", cut), ("water", "8oz")], message_id="<w@b>")
+        s.add_entries([("misc", "short note")], message_id="<s@b>")
+        self.assertEqual(s.maybe_cut_off(), {"<w@b>"})
+        reread = parser.parse_message("NOTE", cut + "\nsnow\n", NOW).entries
+        self.assertEqual(s.rewrap("<w@b>", reread), 1)
+        self.assertIn(cut + " snow", [r[3] for r in s.recent()])
+        self.assertEqual(s.maybe_cut_off(), set())
 
     def test_reports(self):
         s = self.store

@@ -509,6 +509,31 @@ def _body_lines(body):
         yield line
 
 
+_REPLY_HEADER_RE = re.compile(r"^On .+wrote:\s*$")
+_NEW_LINE_RE = re.compile(r"^\s*([A-Za-z][A-Za-z ]*:|[A-Z]{2,}\b|@)")
+
+
+def _wrapped(prev, line):
+    """Mail apps wrap long lines at about 70 characters, so a long line followed
+    by one that doesn't start a new "Label:", CAPS word or @time is one sentence."""
+    return len(prev.strip()) >= 60 and bool(line.strip()) and not _NEW_LINE_RE.match(line)
+
+
+def _first_paragraph(body):
+    """Your text under a bare subject like NOTE, with wrapped lines joined back up."""
+    out = []
+    for line in _body_lines(body):
+        stripped = line.strip()
+        if stripped.startswith(">") or _REPLY_HEADER_RE.match(stripped):
+            break
+        if not _clean(stripped):
+            if out:
+                break
+            continue
+        out.append(stripped)
+    return _clean(" ".join(out))
+
+
 def _clean(value):
     value = value.strip()
     return "" if _PLACEHOLDER_RE.match(value) else value
@@ -576,20 +601,22 @@ def parse_message(subject, body, sent_at=None, codes=None):
             cat, word, value = one_off
             value = _clean(value)
             if not value:
-                for line in _body_lines(body):
-                    stripped = line.strip()
-                    if stripped.startswith(">"):
-                        break
-                    if _clean(stripped):
-                        value = _clean(stripped)
-                        break
+                value = _first_paragraph(body)
             value, at = split_time(value, sent_at)
             if not value and cat in NO_VALUE_NEEDED and word.lower() not in _KEEP_LABEL:
                 value = LABELS[cat].lower()
             add(cat, _labelled(word, value), at)
             return Parsed(entries)
 
+    prev_line, last = "", None   # last: (index, category, value) the previous line logged
     for line in _body_lines(body):
+        if last and not line.lstrip().startswith(">") and _wrapped(prev_line, line):
+            i, cat, value = last
+            value = value + " " + line.strip()
+            entries[i] = Entry(cat, normalize(cat, value), entries[i].at)
+            prev_line, last = line, (i, cat, value)
+            continue
+        prev_line, last = line, None
         lead_at = None
         if line.lstrip().startswith("@"):  # "@10/23 Food: toast"
             rest, lead_at = split_time(line.strip(), sent_at)
@@ -600,7 +627,11 @@ def parse_message(subject, body, sent_at=None, codes=None):
         if cat:
             value, at = split_time(_clean(m.group(2)), sent_at)
             if _clean(value):
-                add(cat, _labelled(m.group(1), _clean(value)), at or lead_at)
+                value = _labelled(m.group(1), _clean(value))
+                before = len(entries)
+                add(cat, value, at or lead_at)
+                if len(entries) > before:
+                    last = (before, cat, value)
             continue
         if line.lstrip().startswith(">"):
             continue  # codes and one-offs only count in your own text, not quoted mail
@@ -632,11 +663,31 @@ def html_to_text(markup):
     return html.unescape(markup).replace("\xa0", " ")
 
 
+def unflow(text, delsp=False):
+    """Join the soft line breaks of a format=flowed body (RFC 3676): a line
+    ending in a space continues on the next one."""
+    out, cur = [], ""
+    for line in text.splitlines():
+        cur += line
+        if line.endswith(" ") and line != "-- ":
+            if delsp:
+                cur = cur[:-1]
+            continue
+        out.append(cur)
+        cur = ""
+    if cur:
+        out.append(cur)
+    return "\n".join(out)
+
+
 def message_text(msg):
     """Best-effort plain text body of an email.message.EmailMessage."""
     part = msg.get_body(preferencelist=("plain",))
     if part is not None:
-        return part.get_content()
+        text = part.get_content()
+        if part.get_param("format", "").lower() == "flowed":
+            text = unflow(text, part.get_param("delsp", "").lower() == "yes")
+        return text
     part = msg.get_body(preferencelist=("html",))
     if part is not None:
         return html_to_text(part.get_content())

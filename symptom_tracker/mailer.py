@@ -60,7 +60,8 @@ def fetch_logs(cfg, password, store):
     allowed = set(cfg["allowed_senders"])
     pollen_from = [p.lower() for p in cfg.get("pollen_senders", [])]
     codes = cfg.get("short_codes") or parser.DEFAULT_CODES
-    since = (dt.date.today() - dt.timedelta(days=LOOKBACK_DAYS)).strftime("%d-%b-%Y")
+    cut_off = store.maybe_cut_off()
+    since =(dt.date.today() - dt.timedelta(days=LOOKBACK_DAYS)).strftime("%d-%b-%Y")
     with imaplib.IMAP4_SSL(cfg["imap_host"], ssl_context=ssl.create_default_context(), timeout=TIMEOUT) as imap:
         imap.login(cfg["tracker_email"], password)
         imap.select("INBOX")
@@ -86,7 +87,10 @@ def fetch_logs(cfg, password, store):
             sender = parseaddr(hdr.get("From", ""))[1].lower()
             message_id = hdr.get("Message-ID") or f"uid-{uid.decode()}"
             is_pollen = bool(pollen_from) and _matches(sender, pollen_from)
-            if (sender not in allowed and not is_pollen) or store.is_processed(message_id):
+            if sender not in allowed and not is_pollen:
+                continue
+            redo = message_id in cut_off
+            if store.is_processed(message_id) and not redo:
                 continue
             raw = _fetch_one(imap, uid, "BODY.PEEK[]")
             if raw is None:
@@ -97,6 +101,10 @@ def fetch_logs(cfg, password, store):
             when = _local_time(msg)
             subject = msg.get("Subject", "")
             body = parser.message_text(msg)
+            if redo:  # logged before wrapped lines were joined up; put the rest back
+                parsed = parser.parse_message(subject, body, sent_at=when, codes=codes)
+                store.rewrap(message_id, parsed.entries)
+                continue
             if is_pollen:
                 store.save_pollen(when.date(), wx.pollen_summary(subject, body), body[:5000])
                 store.mark_processed(message_id)

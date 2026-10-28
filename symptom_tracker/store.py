@@ -22,6 +22,9 @@ CREATE TABLE IF NOT EXISTS processed (
     message_id   TEXT PRIMARY KEY,
     processed_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS rewrapped (  -- emails re-read for lines cut off at the wrap
+    message_id   TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS reminders_sent (
     slot    TEXT PRIMARY KEY,       -- 'YYYY-MM-DD HH:MM', or 'summary YYYY-MM-DD'
     sent_at TEXT NOT NULL
@@ -131,6 +134,34 @@ class Store:
     def mark_processed(self, message_id):
         with self._conn() as c, c:
             c.execute("INSERT OR IGNORE INTO processed VALUES (?, ?)", (message_id, _now()))
+
+    def maybe_cut_off(self):
+        """Message ids of emailed entries long enough to have been cut off where
+        the mail app wrapped them (older versions kept only the first line)."""
+        with self._conn() as c:
+            return {r[0] for r in c.execute(
+                "SELECT DISTINCT message_id FROM entries WHERE source = 'email'"
+                " AND message_id IS NOT NULL AND length(value) >= 55"
+                " AND message_id NOT IN (SELECT message_id FROM rewrapped)")}
+
+    def rewrap(self, message_id, entries):
+        """Put back the rest of entries that were cut off, from the email re-read
+        as `entries`. Returns how many were fixed."""
+        fixed = 0
+        with self._conn() as c, c:
+            rows = c.execute("SELECT id, category, value FROM entries WHERE message_id = ?",
+                             (message_id,)).fetchall()
+            for entry_id, cat, value in rows:
+                for e in entries:
+                    full = normalize(e[0], e[1])
+                    if e[0] == cat and len(full) > len(value) and full.startswith(value):
+                        sev = severity_of(full) if cat in SEVERITY_CATEGORIES else None
+                        c.execute("UPDATE entries SET value = ?, severity = ? WHERE id = ?",
+                                  (full, sev, entry_id))
+                        fixed += 1
+                        break
+            c.execute("INSERT OR IGNORE INTO rewrapped VALUES (?)", (message_id,))
+        return fixed
 
     def is_processed(self, message_id):
         with self._conn() as c:
