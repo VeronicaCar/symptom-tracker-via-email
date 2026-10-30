@@ -92,7 +92,7 @@ class JournalTab(ttk.Frame):
         t.delete("1.0", "end")
         if not view["groups"]:
             t.insert("end", "Nothing logged this day.", "empty")
-        for group in view["groups"]:
+        for group in reversed(view["groups"]):   # newest first
             t.insert("end", group["time"] + "\t", ("time", "entry"))
             line_has_text = bool(group["notes"])
             if line_has_text:
@@ -163,7 +163,7 @@ class ChartsTab(ttk.Frame):
         n = self.notes
         n.configure(state="normal")
         n.delete("1.0", "end")
-        for group in view["groups"]:
+        for group in reversed(view["groups"]):   # newest first
             if group["notes"]:
                 n.insert("end", group["time"] + "\t", ("time", "entry"))
                 n.insert("end", join_notes(group["notes"]) + "\n", "entry")

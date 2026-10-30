@@ -318,7 +318,8 @@ function render() {
     el("div", { class: "blurb" }, d.blurb || " "))));
 
   $("#chips").replaceChildren(...v.chips.map(c => el("span", { class: "chip" + (c.done ? " done" : "") }, c.text)));
-  $("#entries").replaceChildren(...(v.groups.length ? v.groups.map(g => el("div", { class: "entry" },
+  const newestFirst = [...v.groups].reverse();
+  $("#entries").replaceChildren(...(newestFirst.length ? newestFirst.map(g => el("div", { class: "entry" },
     el("div", { class: "time" }, g.time),
     el("div", { class: "body" },
       g.note ? el("p", { class: "note" }, g.note) : null,
@@ -336,7 +337,7 @@ function render() {
     return el("div", {}, el("div", { class: "cell", style: `background:${bg};color:${fg}`, title: `${h.day}: ${h.peak ?? "nothing rated"}` },
       h.peak == null ? "–" : String(h.peak)), el("div", { class: "dow" }, h.label));
   }));
-  const notes = v.groups.filter(g => g.note);
+  const notes = newestFirst.filter(g => g.note);
   $("#notes").replaceChildren(...(notes.length ? notes.map(g => el("div", { class: "row" }, el("span", {}, g.time), el("span", {}, g.note)))
     : [el("div", { class: "empty", style: "padding: 4px 0" }, "No notes this day.")]));
 }
